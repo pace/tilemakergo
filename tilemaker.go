@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"sync"
 
@@ -16,19 +15,11 @@ const (
 	featureTypePolygon
 )
 
-// Access to array:
-// tiles[zoomlevel + (row * row_count) + (column * (column_count * row_count))]
-
-var tiles = map[int64]tileFeatures{}
-var nodeCoordinates = map[int64]coordinate{}
-var nodeCoordinatesSemaphore = make(chan struct{}, 1)
-
-type tileFeatures struct {
-	zoomLevel int
-	row       int
-	column    int
-	features  []feature
-}
+const (
+	ZOOM     = 16
+	MAX_ROWS = 2 ^ 19
+	MAX_COLS = 2 ^ 19
+)
 
 type coordinate struct {
 	latitude  float64
@@ -42,6 +33,20 @@ type feature struct {
 	coordinates []coordinate
 	properties  map[string]interface{}
 }
+
+type tileFeatures struct {
+	zoomLevel int
+	row       int
+	column    int
+	features  []feature
+}
+
+var nodeCoordinates = map[int64]coordinate{}
+var nodeCoordinatesSemaphore = make(chan struct{}, 1)
+
+// Access to array:
+// tiles[zoomlevel + (row * row_count) + (column * (column_count * row_count))]
+var tiles = map[int64]tileFeatures{}
 
 func processor(id int, jobs <-chan interface{}, results chan<- feature) {
 	var js = new(javascript.JavascriptEngine)
@@ -94,7 +99,7 @@ func processor(id int, jobs <-chan interface{}, results chan<- feature) {
 				for _, nodeID := range v.NodeIDs {
 					coordinates = append(coordinates, nodeCoordinates[nodeID])
 				}
-				retFeature := feature{v.ID, featureTypePoint, layerString, coordinates, nil}
+				retFeature := feature{v.ID, featureTypeLine, layerString, coordinates, nil}
 				results <- retFeature
 				<-nodeCoordinatesSemaphore // Release
 			}
@@ -119,18 +124,14 @@ func processor(id int, jobs <-chan interface{}, results chan<- feature) {
 	}
 }
 
-func exporter(id int, jobs <-chan int, results chan<- int) {}
-
-func writer(id int, jobs <-chan int, destFile string) {}
-
 func main() {
 	var threads = 4
 	var qlen = 100
 
 	inChan := make(chan interface{}, qlen)
 	storeChan := make(chan feature, qlen)
-	exportChan := make(chan int)
-	writeChan := make(chan int)
+	exportChan := make(chan tileFeatures, qlen)
+	writeChan := make(chan tileData, qlen)
 
 	var wg sync.WaitGroup
 
@@ -138,7 +139,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reader(0, "karlsruhe-regbez-latest.osm.pbf", inChan)
+		reader(0, "delaware-latest.osm.pbf", inChan)
 		close(inChan)
 	}()
 
@@ -151,10 +152,72 @@ func main() {
 		}(w)
 	}
 
+	// store bounds for writing meta data later
+	var (
+		minLatitude  float64
+		minLongitude float64
+		maxLatitude  float64
+		maxLongitude float64
+	)
+
+	// run our storage routine
 	go func() {
-		for v := range storeChan {
+		for f := range storeChan {
 			// store somehow
-			fmt.Printf("%v\n", v)
+			var (
+				minCol int
+				minRow int
+				maxCol int
+				maxRow int
+			)
+
+			for _, coordinate := range f.coordinates {
+				var col = int(ColumnFromLongitudeF(float32(coordinate.longitude), ZOOM))
+				var row = int(RowFromLatitudeF(float32(coordinate.latitude), ZOOM))
+
+				//fmt.Printf("lat=%.6f, lon=%.6f -> row=%d, col=%d\n", coordinate.latitude, coordinate.longitude, row, col)
+
+				if minCol == 0 || minCol > col {
+					minCol = col
+				}
+				if maxCol < col {
+					maxCol = col
+				}
+				if minRow == 0 || minRow > row {
+					minRow = row
+				}
+				if maxRow < row {
+					maxRow = row
+				}
+
+				if minLatitude == 0 || minLatitude > coordinate.latitude {
+					minLatitude = coordinate.latitude
+				}
+				if maxLatitude == 0 || maxLatitude < coordinate.latitude {
+					maxLatitude = coordinate.latitude
+				}
+				if minLongitude == 0 || minLongitude > coordinate.longitude {
+					minLongitude = coordinate.longitude
+				}
+				if maxLongitude == 0 || maxLongitude < coordinate.longitude {
+					maxLongitude = coordinate.longitude
+				}
+			}
+
+			for c := minCol; c <= maxCol; c++ {
+				for r := minRow; r <= maxRow; r++ {
+					var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
+					if t, ok := tiles[idx]; ok {
+						t.features = append(t.features, f)
+						tiles[idx] = t
+					} else {
+						t = tileFeatures{ZOOM, int(r), int(c), []feature{f}}
+						tiles[idx] = t
+					}
+				}
+			}
+
+			//fmt.Printf("%v\n", v)
 		}
 	}()
 
@@ -162,10 +225,14 @@ func main() {
 	wg.Wait()
 
 	// Start exporter routines
+	var wgExporter sync.WaitGroup
+
 	for w := 0; w < threads; w++ {
 		wg.Add(1)
+		wgExporter.Add(1)
 		go func(w int) {
 			defer wg.Done()
+			defer wgExporter.Done()
 			exporter(w, exportChan, writeChan)
 		}(w)
 	}
@@ -174,8 +241,25 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		writer(0, writeChan, "karlsruhe.mbtiles")
+
+		meta := metadata{name: "pace", description: "pacetiles", bounds: []float32{
+			float32(minLongitude),
+			float32(minLatitude),
+			float32(maxLongitude),
+			float32(maxLatitude)}}
+
+		writer(0, writeChan, "delaware.mbtiles", &meta)
 	}()
+
+	// Write stored data into exportChan
+	for _, features := range tiles {
+		exportChan <- features
+	}
+	close(exportChan)
+
+	// Wait until expoerter finished it's jobs and close write channel
+	wgExporter.Wait()
+	close(writeChan)
 
 	// Wait until all data is processed (all routines ended)
 	wg.Wait()

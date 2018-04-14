@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -23,6 +24,11 @@ func reader(id int, sourceFile string, node chan<- interface{}) {
 
 	d.Start(1)
 
+	// Set up our counters
+	var nodeCount int64
+	var wayCount int64
+	var relationCount int64
+
 	// set up the lists
 	for {
 		if v, err := d.Decode(); err == io.EOF {
@@ -33,6 +39,17 @@ func reader(id int, sourceFile string, node chan<- interface{}) {
 
 		} else {
 			node <- v
+
+			switch v.(type) {
+			case *osmpbf.Node:
+				nodeCount++
+			case *osmpbf.Way:
+				wayCount++
+			case *osmpbf.Relation:
+				relationCount++
+			}
 		}
 	}
+
+	fmt.Printf("Processed %d nodes, %d ways and %d relations.\n", nodeCount, wayCount, relationCount)
 }

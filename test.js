@@ -15,7 +15,7 @@ function useRelation(a) {
 function processNode(a) {
   //console.log(JSON.stringify(a))
   return {
-    "layer": "l1",
+    "layer": "dot",
     "properties": {
       "aa": "bb",
     }
@@ -25,7 +25,7 @@ function processNode(a) {
 function processWay(a) {
   //console.log(JSON.stringify(a))
   return {
-    "layer": "l1",
+    "layer": "road",
     "properties": {
       "aa": "bb",
     }
@@ -35,7 +35,7 @@ function processWay(a) {
 function processRelation(a) {
   //console.log(JSON.stringify(a))
   return {
-    "layer": "l1",
+    "layer": "rel",
     "properties": {
       "aa": "bb",
     }
