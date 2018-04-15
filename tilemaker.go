@@ -91,8 +91,6 @@ func processor(id int, jobs <-chan interface{}, results chan<- feature) {
 				layerValue, _ := retValue.Object().Get("layer")
 				layerString, _ := layerValue.ToString()
 
-				// TODO: Generate properties map
-
 				// create and pass feature
 				nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
 				var coordinates []coordinate
@@ -125,7 +123,7 @@ func processor(id int, jobs <-chan interface{}, results chan<- feature) {
 }
 
 func main() {
-	var threads = 4
+	var threads = 1
 	var qlen = 100
 
 	inChan := make(chan interface{}, qlen)
@@ -139,7 +137,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reader(0, "delaware-latest.osm.pbf", inChan)
+		reader(0, "malta-latest.osm.pbf", inChan)
 		close(inChan)
 	}()
 
@@ -204,18 +202,21 @@ func main() {
 				}
 			}
 
-			for c := minCol; c <= maxCol; c++ {
-				for r := minRow; r <= maxRow; r++ {
-					var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
-					if t, ok := tiles[idx]; ok {
-						t.features = append(t.features, f)
-						tiles[idx] = t
-					} else {
-						t = tileFeatures{ZOOM, int(r), int(c), []feature{f}}
-						tiles[idx] = t
-					}
-				}
+			// Note: Just store the feature in the tile which it FIRST occurs?
+			// for c := minCol; c <= maxCol; c++ {
+			// 	for r := minRow; r <= maxRow; r++ {
+			var c = int(ColumnFromLongitudeF(float32(f.coordinates[0].longitude), ZOOM))
+			var r = int(RowFromLatitudeF(float32(f.coordinates[0].latitude), ZOOM))
+			var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
+			if t, ok := tiles[idx]; ok {
+				t.features = append(t.features, f)
+				tiles[idx] = t
+			} else {
+				t = tileFeatures{ZOOM, int(r), int(c), []feature{f}}
+				tiles[idx] = t
 			}
+			// 	}
+			// }
 
 			//fmt.Printf("%v\n", v)
 		}
@@ -248,7 +249,7 @@ func main() {
 			float32(maxLongitude),
 			float32(maxLatitude)}}
 
-		writer(0, writeChan, "delaware.mbtiles", &meta)
+		writer(0, writeChan, "malta.mbtiles", &meta)
 	}()
 
 	// Write stored data into exportChan

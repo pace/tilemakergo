@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"math"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -42,7 +43,8 @@ func writer(id int, jobs <-chan tileData, destFile string, meta *metadata) {
 	}
 
 	for tile := range jobs {
-		_, err = insertStatement.Exec(tile.zoomLevel, tile.column, tile.row, tile.data)
+		flippedRow := int(math.Pow(2, float64(tile.zoomLevel))) - tile.row - 1
+		_, err = insertStatement.Exec(tile.zoomLevel, tile.column, flippedRow, tile.data)
 
 		if err != nil {
 			log.Fatal(err)
@@ -77,6 +79,7 @@ func CreateOrOpenDatabase(path string) *sql.DB {
 func CreateSchema(db *sql.DB) {
 	// This creates the mbtiles schema as described in https://github.com/mapbox/mbtiles-spec/blob/master/1.3/spec.md
 	statements := []string{
+		"PRAGMA application_id = 0x4d504258;",
 		"CREATE TABLE metadata (name text, value text);",
 		"CREATE TABLE tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);",
 		"CREATE UNIQUE INDEX metadata_index on metadata (name);",

@@ -13,7 +13,7 @@ const (
 	commandLineTo    = uint8(2)
 	commandClosePath = uint8(7)
 )
-const extent uint32 = 4096 // TODO: This needs to be read from config
+const extent uint32 = 256 // TODO: This needs to be read from config
 
 // Debug entry point
 func exporter(id int, jobs <-chan tileFeatures, results chan<- tileData) {
@@ -115,7 +115,8 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 	if err != nil {
 		log.Fatal("Could not export pbf files")
 	}
-	// TODO: Do not open the database every time
+
+	//log.Printf("Stored %d features in tile: %d | %d | %d", c, tile.zoomLevel, tile.row, tile.column)
 
 	return tileData{zoomLevel: tile.zoomLevel, row: tile.row, column: tile.column, data: out}
 }
@@ -163,6 +164,7 @@ func GetOrCreateLayer(tile *Tile, name *string) *Tile_Layer {
 			return layer
 		}
 	}
+
 	version := uint32(2)
 	ex := extent
 	layer := Tile_Layer{}
