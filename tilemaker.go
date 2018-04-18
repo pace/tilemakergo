@@ -1,11 +1,7 @@
 package main
 
 import (
-	"log"
 	"sync"
-
-	"./javascript"
-	"github.com/qedus/osmpbf"
 )
 
 const (
@@ -48,80 +44,6 @@ var nodeCoordinatesSemaphore = make(chan struct{}, 1)
 // tiles[zoomlevel + (row * row_count) + (column * (column_count * row_count))]
 var tiles = map[int64]tileFeatures{}
 
-func processor(id int, jobs <-chan interface{}, results chan<- feature) {
-	var js = new(javascript.JavascriptEngine)
-	js.Load("test.js")
-
-	for v := range jobs {
-		switch v := v.(type) {
-		case *osmpbf.Node:
-
-			// Store coords for later useWay
-			nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
-			nodeCoordinates[v.ID] = coordinate{v.Lat, v.Lon}
-			<-nodeCoordinatesSemaphore // Release
-
-			// Process Node v.
-			retValue, _ := js.Call(`useNode`, v)
-			retBool, _ := retValue.ToBoolean()
-			if retBool {
-				retValue, _ = js.Call(`processNode`, v)
-
-				// layer
-				layerValue, _ := retValue.Object().Get("layer")
-				layerString, _ := layerValue.ToString()
-
-				// TODO: Generate properties map
-
-				// create and pass feature
-				nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
-				retFeature := feature{v.ID, featureTypePoint, layerString, []coordinate{nodeCoordinates[v.ID]}, nil}
-				results <- retFeature
-				<-nodeCoordinatesSemaphore // Release
-			}
-
-		case *osmpbf.Way:
-			// Process Way v.
-			retValue, _ := js.Call(`useWay`, v)
-			retBool, _ := retValue.ToBoolean()
-			if retBool {
-				retValue, _ = js.Call(`processWay`, v)
-
-				// layer
-				layerValue, _ := retValue.Object().Get("layer")
-				layerString, _ := layerValue.ToString()
-
-				// create and pass feature
-				nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
-				var coordinates []coordinate
-				for _, nodeID := range v.NodeIDs {
-					coordinates = append(coordinates, nodeCoordinates[nodeID])
-				}
-				retFeature := feature{v.ID, featureTypeLine, layerString, coordinates, nil}
-				results <- retFeature
-				<-nodeCoordinatesSemaphore // Release
-			}
-
-		case *osmpbf.Relation:
-			// Process Relation v.
-			retValue, _ := js.Call(`useRelation`, v)
-			retBool, _ := retValue.ToBoolean()
-			if retBool {
-				retValue, _ = js.Call(`processRelation`, v)
-
-				// layer
-				//layerValue, _ := retValue.Object().Get("layer")
-				//layerString, _ := layerValue.ToString()
-
-				// TODO: Do "something" with that data ;-)
-			}
-
-		default:
-			log.Fatalf("unknown type %T\n", v)
-		}
-	}
-}
-
 func main() {
 	var threads = 1
 	var qlen = 100
@@ -146,7 +68,7 @@ func main() {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			processor(w, inChan, storeChan)
+			processor("example/pace.js", inChan, storeChan)
 		}(w)
 	}
 

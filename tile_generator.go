@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-
 	proto "github.com/golang/protobuf/proto"
 )
 
@@ -18,28 +17,42 @@ const extent uint32 = 256 // TODO: This needs to be read from config
 var currentX int64 = 0
 var currentY int64 = 0
 
+type layerMeta struct {
+	keyIndex uint32
+	valueIndex uint32
+	keys map[string]uint32
+	values map[interface{}]uint32
+}
+
+var count = 0
+
 // Debug entry point
 func exporter(id int, jobs <-chan tileFeatures, results chan<- tileData) {
 	for features := range jobs {
 		results <- EncodeFeatures(&features)
 	}
+
+	log.Printf("Exported %d count\n", count)
 }
 
 func EncodeFeatures(tile *tileFeatures) tileData {
 	// Create a protobuffer tile file
 	var pbTile = Tile{}
-	var keyIndex = uint32(0)
-	var valueIndex = uint32(0)
-	var keys = make(map[string]uint32)
-	var stringValues = make(map[string]uint32)
-	//var doubleValues = make(map[string]uint32)
-	//var intValues = make(map[string]uint32)
-	//var boolValues = make(map[bool]uint32)
+	var layerMetas = make(map[string]layerMeta)
 
 	var c = 0
 	for _, feature := range tile.features {
 		c++
-		var pbLayer = GetOrCreateLayer(&pbTile, &feature.layer)
+		var pbLayer = GetOrCreateLayer(&pbTile, feature.layer)
+		var currentMeta layerMeta
+
+		// Check if there is already a supporting layer meta
+		if meta, ok := layerMetas[feature.layer]; ok {
+			currentMeta = meta
+		} else {
+			currentMeta = layerMeta{0, 0, make(map[string]uint32), make(map[interface{}]uint32)}
+		}
+
 		var pbFeature = Tile_Feature{}
 		id := uint64(feature.id)
 		typ := Tile_GeomType(feature.typ)
@@ -49,6 +62,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		column := uint32(tile.column)
 
 		// Encode all commands needed to draw this feature
+		// Reset the pointer to allow correct relative drawing
 		currentX = 0
 		currentY = 0
 
@@ -63,28 +77,28 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		}
 
 		pbFeature.Geometry = commands
+
 		// Encode all keys (properties) for this feature.
 		// NOTE: Multiple features can reference the same key / value.
 		// Process:
 		// If a key (or value) is not yet in this tile, append it and reference it in this feature
 		// If a key (or value) exists in this tile, only reference it
 		for key, value := range feature.properties {
-			if _, ok := keys[key]; ok {
-				pbFeature.Tags = append(pbFeature.Tags, keys[key])
+			if _, ok := currentMeta.keys[key]; ok {
+				pbFeature.Tags = append(pbFeature.Tags, currentMeta.keys[key])
 			} else {
-				keys[key] = keyIndex
-				keyIndex++
+				currentMeta.keys[key] = currentMeta.keyIndex
+				currentMeta.keyIndex++
 			}
-			switch v := value.(type) {
-			case string:
-				if _, ok := stringValues[v]; ok {
-					pbFeature.Tags = append(pbFeature.Tags, stringValues[v])
-				} else {
-					stringValues[v] = valueIndex
-					valueIndex++
-				}
+
+			if _, ok := currentMeta.values[value]; ok {
+				pbFeature.Tags = append(pbFeature.Tags, currentMeta.values[value])
+			} else {
+				currentMeta.values[value] = currentMeta.valueIndex
+				currentMeta.valueIndex++
 			}
 		}
+
 		// Variant type encoding
 		// The use of values is described in section 4.1 of the specification
 		// type Tile_Value struct {
@@ -101,30 +115,42 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		// }
 		// Append features to the layers feature
 		pbLayer.Features = append(pbLayer.Features, &pbFeature)
+
+		layerMetas[feature.layer] = currentMeta
 	}
 
-	//fmt.Printf("features in this tile: %d\n", c)
-	/*
+	for name, meta := range layerMetas {
+		var pbLayer = GetLayer(&pbTile, name)
+
 		// Add all keys in order
-		pbKeys := make([]string, len(keys))
-		for i, k := range keys {
+		pbKeys := make([]string, len(meta.keys))
+		for i, k := range meta.keys {
 			pbKeys[k] = i
 		}
-		pbTile.Keys = &pbKeys
-		pbValues := make([]Tile_Value, len(stringValues)+len(intValues)+len(doubleValues)+len(boolValues))
-		for i, v := range stringValues {
+		pbLayer.Keys = pbKeys
+
+		// Sort all values based on their index
+		pbValues := make([]*Tile_Value, len(meta.values))
+
+		for value, index := range meta.values {
 			tileValue := Tile_Value{}
-			tileValue.StringValue = v
-			pbValues[i] = tileValue
+
+			switch v := value.(type) {
+			case string:
+				tileValue.StringValue = &v
+			}
+
+			pbValues[index] = &tileValue
 		}
-		pbTile.Values = &pbValues*/
+
+		pbLayer.Values = pbValues
+	}
+		
 	// Write the protobuffer tile file to the database
 	out, err := proto.Marshal(&pbTile)
 	if err != nil {
 		log.Fatal("Could not export pbf files")
 	}
-
-	//log.Printf("Stored %d features in tile: %d | %d | %d", c, tile.zoomLevel, tile.row, tile.column)
 
 	return tileData{zoomLevel: tile.zoomLevel, row: tile.row, column: tile.column, data: out}
 }
@@ -161,9 +187,6 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 		command[(index*2)+1] = uint32((int64(dX) << 1) ^ (int64(dX) >> 31)) // Longitude
 		command[(index*2)+2] = uint32((int64(dY) << 1) ^ (int64(dY) >> 31)) // Latitude
 
-//		log.Printf("dX: %d\t, dY: %d\t, x: %d\t, y: %d\t, cX: %d\t, cY: %d\t\n", dX, dY, x, y, currentX, currentY)
-		// log.Printf("lon: %f, lat: %f", coordinate.longitude, coordinate.latitude)
-
 		currentX = x
 		currentY = y
 	}
@@ -173,23 +196,35 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 
 
 /* Protobuffer helper */
-func GetOrCreateLayer(tile *Tile, name *string) *Tile_Layer {
+func GetOrCreateLayer(tile *Tile, name string) *Tile_Layer {
 	// Check if this tile already contains the layer and if not create it
 	for _, layer := range tile.Layers {
-		if layer.Name == name {
+		if *layer.Name == name {
 			return layer
 		}
 	}
 
+	newName := name
 	version := uint32(2)
 	ex := extent
 	layer := Tile_Layer{}
 	layer.Features = make([]*Tile_Feature, 0)
 	layer.Extent = &ex
-	layer.Name = name
+	layer.Name = &newName
 	layer.Version = &version
 	tile.Layers = append(
 		tile.Layers,
 		&layer)
+
 	return &layer
+}
+
+func GetLayer(tile *Tile, name string) *Tile_Layer {
+	for _, layer := range tile.Layers {
+		if *layer.Name == name {
+			return layer
+		}
+	}
+
+	return nil
 }

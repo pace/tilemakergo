@@ -1,7 +1,7 @@
 console.log("Javascript says: I'm ready.");
 
 function useNode(a) {
-  return true;
+  return false;
 }
 
 function useWay(a) {
@@ -19,9 +19,8 @@ function useRelation(a) {
 function processNode(a) {
   //console.log(JSON.stringify(a))
   return {
-    "layer": "dot",
+    "layer": "road",
     "properties": {
-      "aa": "bb",
     }
   }
 }
@@ -30,7 +29,7 @@ function processWay(a) {
   return {
     "layer": "road",
     "properties": {
-      "aa": "bb",
+      "hw":  a[0].Tags["highway"],
     }
   }
 }
@@ -43,4 +42,8 @@ function processRelation(a) {
       "aa": "bb",
     }
   }
+}
+
+function isASCII(str) {
+    return /^[\x00-\x7F]*$/.test(str);
 }

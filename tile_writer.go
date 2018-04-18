@@ -45,14 +45,6 @@ func writer(id int, jobs <-chan tileData, destFile string, meta *metadata) {
 	for tile := range jobs {
 		flippedRow := int(math.Pow(2, float64(tile.zoomLevel))) - tile.row - 1
 
-		if (tile.column == 35383 && flippedRow == 25764) {
-			log.Printf("Found!\n")
-		}
-
-		if (tile.column == 25764 && flippedRow == 35383) {
-			log.Printf("Found!\n")
-		}
-
 		_, err = insertStatement.Exec(tile.zoomLevel, tile.column, flippedRow, tile.data)
 
 		if err != nil {
