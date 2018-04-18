@@ -15,9 +15,11 @@ const (
 )
 const extent uint32 = 256 // TODO: This needs to be read from config
 
+var currentX int64 = 0
+var currentY int64 = 0
+
 // Debug entry point
 func exporter(id int, jobs <-chan tileFeatures, results chan<- tileData) {
-
 	for features := range jobs {
 		results <- EncodeFeatures(&features)
 	}
@@ -33,6 +35,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 	//var doubleValues = make(map[string]uint32)
 	//var intValues = make(map[string]uint32)
 	//var boolValues = make(map[bool]uint32)
+
 	var c = 0
 	for _, feature := range tile.features {
 		c++
@@ -44,7 +47,11 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		pbFeature.Type = &typ
 		row := uint32(tile.row)
 		column := uint32(tile.column)
+
 		// Encode all commands needed to draw this feature
+		currentX = 0
+		currentY = 0
+
 		var commands []uint32
 		switch feature.typ {
 		case featureTypePoint:
@@ -54,6 +61,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		case featureTypePolygon:
 			commands = EncodePolygon(row, column, tile.zoomLevel, feature)
 		}
+
 		pbFeature.Geometry = commands
 		// Encode all keys (properties) for this feature.
 		// NOTE: Multiple features can reference the same key / value.
@@ -122,12 +130,12 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 }
 func EncodeNode(tileRow uint32, tileColumn uint32, zoom int, node feature) []uint32 {
 	// A node consists of a single moveTo command. This can be repeated for multipoints.
-	return Command(commandMoveTo, tileRow, tileColumn, zoom, node.coordinates[0:0])
+	return Command(commandMoveTo, tileRow, tileColumn, zoom, node.coordinates[0:1])
 }
 func EncodeWay(tileRow uint32, tileColumn uint32, zoom int, way feature) []uint32 {
 	// A way consist of a initial moveTo command followed by one or more lineTo command.
 	return append(
-		Command(commandMoveTo, tileRow, tileColumn, zoom, way.coordinates[0:0]),
+		Command(commandMoveTo, tileRow, tileColumn, zoom, way.coordinates[0:1]),
 		Command(commandLineTo, tileRow, tileColumn, zoom, way.coordinates[1:len(way.coordinates)])...)
 }
 func EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature) []uint32 {
@@ -136,25 +144,33 @@ func EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature)
 		EncodeWay(tileRow, tileColumn, zoom, polygon),
 		Command(commandClosePath, tileRow, tileColumn, zoom, []coordinate{})...)
 }
+
 func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
 	command := make([]uint32, len(coordinates)*2+1)
 	command[0] = uint32(uint32(id&0x7)) | uint32((len(coordinates) << 3))
-	currentX := uint32(0)
-	currentY := uint32(0)
+	
 	for index, coordinate := range coordinates {
 		// We have the TILE coordinates stored in the feature itself.
 		// We now need a offset to this coordinates and multiply that by the tiles pixels resolution
-		x := uint32((ColumnFromLongitudeF(float32(coordinate.longitude), zoom) - float32(tileColumn)) * float32(extent))
-		y := uint32((RowFromLatitudeF(float32(coordinate.latitude), zoom) - float32(tileRow)) * float32(extent))
+		x := int64((ColumnFromLongitudeF(float32(coordinate.longitude), zoom) - float32(tileColumn)) * float32(extent))
+		y := int64((RowFromLatitudeF(float32(coordinate.latitude), zoom) - float32(tileRow)) * float32(extent))
+
 		dX := -currentX + x
 		dY := -currentY + y
-		command[(index*2)+2] = uint32(dX<<1) ^ uint32(dX>>31) // Longitude
-		command[(index*2)+1] = uint32(dY<<1) ^ uint32(dY>>31) // Latitude
+				
+		command[(index*2)+1] = uint32((int64(dX) << 1) ^ (int64(dX) >> 31)) // Longitude
+		command[(index*2)+2] = uint32((int64(dY) << 1) ^ (int64(dY) >> 31)) // Latitude
+
+//		log.Printf("dX: %d\t, dY: %d\t, x: %d\t, y: %d\t, cX: %d\t, cY: %d\t\n", dX, dY, x, y, currentX, currentY)
+		// log.Printf("lon: %f, lat: %f", coordinate.longitude, coordinate.latitude)
+
 		currentX = x
 		currentY = y
 	}
+
 	return command
 }
+
 
 /* Protobuffer helper */
 func GetOrCreateLayer(tile *Tile, name *string) *Tile_Layer {

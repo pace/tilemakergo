@@ -17,8 +17,8 @@ const (
 
 const (
 	ZOOM     = 16
-	MAX_ROWS = 2 ^ 19
-	MAX_COLS = 2 ^ 19
+	MAX_ROWS = 524288
+	MAX_COLS = 524288
 )
 
 type coordinate struct {
@@ -173,8 +173,6 @@ func main() {
 				var col = int(ColumnFromLongitudeF(float32(coordinate.longitude), ZOOM))
 				var row = int(RowFromLatitudeF(float32(coordinate.latitude), ZOOM))
 
-				//fmt.Printf("lat=%.6f, lon=%.6f -> row=%d, col=%d\n", coordinate.latitude, coordinate.longitude, row, col)
-
 				if minCol == 0 || minCol > col {
 					minCol = col
 				}
@@ -203,22 +201,19 @@ func main() {
 			}
 
 			// Note: Just store the feature in the tile which it FIRST occurs?
-			// for c := minCol; c <= maxCol; c++ {
-			// 	for r := minRow; r <= maxRow; r++ {
-			var c = int(ColumnFromLongitudeF(float32(f.coordinates[0].longitude), ZOOM))
-			var r = int(RowFromLatitudeF(float32(f.coordinates[0].latitude), ZOOM))
-			var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
-			if t, ok := tiles[idx]; ok {
-				t.features = append(t.features, f)
-				tiles[idx] = t
-			} else {
-				t = tileFeatures{ZOOM, int(r), int(c), []feature{f}}
-				tiles[idx] = t
+			for c := minCol; c <= maxCol; c++ {
+				for r := minRow; r <= maxRow; r++ {
+					var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
+					if t, ok := tiles[idx]; ok {
+						t.features = append(t.features, f)
+						tiles[idx] = t
+					} else {
+						t = tileFeatures{ZOOM, int(r), int(c), []feature{f}}
+						tiles[idx] = t
+					}
+				}
 			}
-			// 	}
-			// }
 
-			//fmt.Printf("%v\n", v)
 		}
 	}()
 
@@ -256,10 +251,12 @@ func main() {
 	for _, features := range tiles {
 		exportChan <- features
 	}
+
 	close(exportChan)
 
 	// Wait until expoerter finished it's jobs and close write channel
 	wgExporter.Wait()
+
 	close(writeChan)
 
 	// Wait until all data is processed (all routines ended)

@@ -5,11 +5,15 @@ function useNode(a) {
 }
 
 function useWay(a) {
-  return true;
+  if ('highway' in a[0].Tags) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 function useRelation(a) {
-  return true;
+  return false;
 }
 
 function processNode(a) {
@@ -23,7 +27,6 @@ function processNode(a) {
 }
 
 function processWay(a) {
-  //console.log(JSON.stringify(a))
   return {
     "layer": "road",
     "properties": {
