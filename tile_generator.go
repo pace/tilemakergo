@@ -87,6 +87,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 			if _, ok := currentMeta.keys[key]; ok {
 				pbFeature.Tags = append(pbFeature.Tags, currentMeta.keys[key])
 			} else {
+				pbFeature.Tags = append(pbFeature.Tags, currentMeta.keyIndex)
 				currentMeta.keys[key] = currentMeta.keyIndex
 				currentMeta.keyIndex++
 			}
@@ -94,6 +95,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 			if _, ok := currentMeta.values[value]; ok {
 				pbFeature.Tags = append(pbFeature.Tags, currentMeta.values[value])
 			} else {
+				pbFeature.Tags = append(pbFeature.Tags, currentMeta.valueIndex)
 				currentMeta.values[value] = currentMeta.valueIndex
 				currentMeta.valueIndex++
 			}

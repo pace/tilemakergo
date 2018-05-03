@@ -73,17 +73,25 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 			retValue, _ := js.Call(`useNode`, v)
 			retBool, _ := retValue.ToBoolean()
 			if retBool {
-				retValue, _ = js.Call(`processNode`, v)
+				processedNode, _ := js.Call(`processNode`, v)
 
 				// layer
-				layerValue, _ := retValue.Object().Get("layer")
+				layerValue, _ := processedNode.Object().Get("layer")
 				layerString, _ := layerValue.ToString()
 
-				// TODO: Generate properties map
+				// The js had the chance to check / modify / copy the tags associated to 
+				// the way and return a KV set of values itself to encode
+				processedValues, _ := processedNode.Object().Get("properties")
+				exportedProperties, err := processedValues.Export()
+				propertiesInterface := make(map[string]interface{})
+
+				if (err == nil) {
+					propertiesInterface = exportedProperties.(map[string]interface{})
+				}
 
 				// create and pass feature
 				nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
-				retFeature := feature{v.ID, featureTypePoint, layerString, []coordinate{nodeCoordinates[v.ID]}, nil}
+				retFeature := feature{v.ID, featureTypePoint, layerString, []coordinate{nodeCoordinates[v.ID]}, propertiesInterface}
 				results <- retFeature
 				<-nodeCoordinatesSemaphore // Release
 			}

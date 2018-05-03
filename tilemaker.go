@@ -59,7 +59,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reader(0, "malta-latest.osm.pbf", inChan)
+		reader(0, "karlsruhe.pbf", inChan)
 		close(inChan)
 	}()
 
@@ -166,7 +166,7 @@ func main() {
 			float32(maxLongitude),
 			float32(maxLatitude)}}
 
-		writer(0, writeChan, "malta.mbtiles", &meta)
+		writer(0, writeChan, "karlsruhe.mbtiles", &meta)
 	}()
 
 	// Write stored data into exportChan

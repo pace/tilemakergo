@@ -106,7 +106,7 @@ func UpdateMetadata(db *sql.DB, meta *metadata) {
 	bounds := strings.Trim(strings.Replace(fmt.Sprint(meta.bounds[:]), " ", ",", -1), "[]")
 	InsertMetadata(db, "bounds", bounds)
 
-	InsertMetadata(db, "json", `{"vector_layers":[{"id":"road","minzoom":16,"maxzoom":16,"fields":{"class":"String"}}]}`)
+	InsertMetadata(db, "json", `{"vector_layers":[{"id":"r1","minzoom":16,"maxzoom":16,"fields":{"class":"String"}},{"id":"r2","minzoom":16,"maxzoom":16,"fields":{"class":"String"}},{"id":"r3","minzoom":16,"maxzoom":16,"fields":{"class":"String"}},{"id":"r4","minzoom":16,"maxzoom":16,"fields":{"class":"String"}},{"id":"pi","minzoom":16,"maxzoom":16,"fields":{"class":"String"}},{"id":"hn","minzoom":16,"maxzoom":16,"fields":{"class":"String"}}]}`)
 
 	// PB: Not sure if needed
 	InsertMetadata(db, "scheme", "tms")
