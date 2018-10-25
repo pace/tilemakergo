@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/qedus/osmpbf"
 )
@@ -22,7 +23,7 @@ func reader(id int, sourceFile string, node chan<- interface{}) {
 	// use more memory from the start, it is faster
 	d.SetBufferSize(osmpbf.MaxBlobSize)
 
-	d.Start(1)
+	d.Start(runtime.GOMAXPROCS(-1))
 
 	// Set up our counters
 	var nodeCount int64
@@ -49,9 +50,21 @@ func reader(id int, sourceFile string, node chan<- interface{}) {
 		}
 	}
 
-	fmt.Printf("Processed %d nodes, %d ways and %d relations.\n", nodeCount, wayCount, relationCount)
+	fmt.Printf("Finished importing: %d nodes, %d ways and %d relations.\n", nodeCount, wayCount, relationCount)
 }
 
+func inKeySet(keys []string, tags map[string]string) (included bool) {
+	included = false
+
+	for _, key := range keys {
+		if _, i := tags[key]; i {
+			included = true
+			return
+		}
+	}
+
+	return
+}
 
 // Goes through every node / way / relation and checks:
 // - If it should be included
@@ -60,19 +73,41 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 	var js = new(JavascriptEngine)
 	js.Load(javascript)
 
+	// Get include keys
+	node_obj, _ := js.vm.Get("node_keys")
+	node_keys, _ := node_obj.Export()
+	parsed_node_keys, err := node_keys.([]string)
+
+	if (err) {
+		parsed_node_keys = []string{}
+	}
+
+	way_obj, _ := js.vm.Get("way_keys")
+	way_keys, _ := way_obj.Export()
+	parsed_way_keys, err := way_keys.([]string)
+
+	if (err) {
+		parsed_way_keys = []string{}
+	}
+
+	relation_obj, _ := js.vm.Get("relation_keys")
+	relation_keys, _ := relation_obj.Export()
+	parsed_relation_keys, err := relation_keys.([]string)
+
+	if (err) {
+		parsed_relation_keys = []string{}
+	}
+
 	for v := range jobs {
 		switch v := v.(type) {
 		case *osmpbf.Node:
-
 			// Store coords for later useWay
 			nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
 			nodeCoordinates[v.ID] = coordinate{v.Lat, v.Lon}
 			<-nodeCoordinatesSemaphore // Release
 
 			// Process Node v.
-			retValue, _ := js.Call(`useNode`, v)
-			retBool, _ := retValue.ToBoolean()
-			if retBool {
+			if inKeySet(parsed_node_keys, v.Tags) {
 				processedNode, _ := js.Call(`processNode`, v)
 
 				// layer
@@ -98,9 +133,7 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 
 		case *osmpbf.Way:
 			// Process Way v.
-			retValue, _ := js.Call(`useWay`, v)
-			retBool, _ := retValue.ToBoolean()
-			if retBool {
+			if inKeySet(parsed_way_keys, v.Tags) {
 				processedWay, _ := js.Call(`processWay`, v)
 
 				// The layer of the way was determined by the js
@@ -130,10 +163,8 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 
 		case *osmpbf.Relation:
 			// Process Relation v.
-			retValue, _ := js.Call(`useRelation`, v)
-			retBool, _ := retValue.ToBoolean()
-			if retBool {
-				retValue, _ = js.Call(`processRelation`, v)
+			if inKeySet(parsed_relation_keys, v.Tags) {
+				// retValue, _ = js.Call(`processRelation`, v)
 
 				// layer
 				//layerValue, _ := retValue.Object().Get("layer")

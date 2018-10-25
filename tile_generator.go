@@ -67,6 +67,10 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		currentX = 0
 		currentY = 0
 
+		// TODO: Split up feature so that we only ever draw 1 "pixel" out of our bounds
+		// TODO: We must make sure that a feature is not just cut of but split, in case it enters 
+		// TODO: the current tile again
+
 		var commands []uint32
 		switch feature.typ {
 		case featureTypePoint:

@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"github.com/pkg/profile"
 )
 
 const (
@@ -45,8 +46,10 @@ var nodeCoordinatesSemaphore = make(chan struct{}, 1)
 var tiles = map[int64]tileFeatures{}
 
 func main() {
-	var threads = 1
-	var qlen = 100
+	defer profile.Start().Stop()
+
+	var threads = 4
+	var qlen = 10000
 
 	inChan := make(chan interface{}, qlen)
 	storeChan := make(chan feature, qlen)
@@ -122,7 +125,6 @@ func main() {
 				}
 			}
 
-			// Note: Just store the feature in the tile which it FIRST occurs?
 			for c := minCol; c <= maxCol; c++ {
 				for r := minRow; r <= maxRow; r++ {
 					var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
@@ -145,15 +147,13 @@ func main() {
 	// Start exporter routines
 	var wgExporter sync.WaitGroup
 
-	for w := 0; w < threads; w++ {
-		wg.Add(1)
-		wgExporter.Add(1)
-		go func(w int) {
-			defer wg.Done()
-			defer wgExporter.Done()
-			exporter(w, exportChan, writeChan)
-		}(w)
-	}
+	// TODO: This seems to be not multi-thread safe
+	// TODO: Check why and improve speed
+	go func() {
+		defer wg.Done()
+		defer wgExporter.Done()
+		exporter(w, exportChan, writeChan)
+	}()
 
 	// Starter writer routine
 	wg.Add(1)

@@ -8,20 +8,12 @@ var house_number_layer = "hn";
 var road_1_highway_types = [ "residential", "unclassified", "tertiary", "secondary", "primary", "living_street", "motorway", "motorway_link", "trunk", "trunk_link", "primary_link", "motorway_junction", "tertiary_link" ]
 var road_2_highway_types = [ "service", "turning_cycle", "turning_loop", "mini_roundabout", "raceway", "rest_area", "services"  ]
 var road_3_highway_types = [ "passing_place", "construction" ]
-var road_4_highway_types = [ "path", "footway", "bus_stop", "cycleway", "crossing", "pedestrian", "bridleway" ]
+var road_4_highway_types = [ "path", "footway", "bus_stop", "cycleway", "crossing", "pedestrian", "bridleway", "track" ]
 
-
-function useNode(node) {
-  return ('highway' in node[0].Tags || 'addr:housenumber' in node[0].Tags);
-}
-
-function useWay(way) {
-  return ('highway' in way[0].Tags || 'addr:housenumber' in way[0].Tags);
-}
-
-function useRelation(a) {
-  return false;
-}
+// Required by the parser
+var node_keys = ['highway', 'addr:housenumber'];
+var way_keys = ['highway', 'addr:housenumber'];
+var relation_keys = [];
 
 function processNode(node) {
   var properties = {};
@@ -50,6 +42,11 @@ function processWay(way) {
   var properties = {};
   var highway = way[0].Tags["highway"];
 
+  if ('addr:housenumber' in way[0].Tags) {
+    properties["hn"] = way[0].Tags["addr:housenumber"];
+    properties["st"] = way[0].Tags["addr:street"];
+  }
+
   if (highway != null) {
     if (arrayContains(road_1_highway_types, highway)) {
       layer = road_1_layer;
@@ -59,16 +56,33 @@ function processWay(way) {
       layer = road_3_layer;
     }
 
-    properties = { "hw":  highway };
-  } else {
-    if ('addr:housenumber' in way[0].Tags) {
+    properties["hw"] = highway;
+  } else if ('addr:housenumber' in way[0].Tags) {
       layer = house_number_layer;
+  }
 
-      properties = {
-        "hn": way[0].Tags["addr:housenumber"],
-        "st": way[0].Tags["addr:street"],
-      };
-    }
+  if ('name' in way[0].Tags) {
+    properties["nm"] = way[0].Tags['name'];
+  }
+
+  if ('ref' in way[0].Tags) {
+    properties["rf"] = way[0].Tags['ref'];
+  }
+
+  if ('lanes' in way[0].Tags) {
+    properties["ln"] = way[0].Tags["lanes"];
+  }
+
+  if ('maxspeed' in way[0].Tags) {
+    properties["ms"] = way[0].Tags["maxspeed"];
+  }
+
+  if ('overtaking' in way[0].Tags) {
+    properties["ot"] = way[0].Tags["overtaking"];
+  }
+
+  if ('oneway' in way[0].Tags) {
+    properties["ow"] = way[0].Tags["oneway"];
   }
 
   return {
