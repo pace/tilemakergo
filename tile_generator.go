@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+
 	proto "github.com/golang/protobuf/proto"
 )
 
@@ -12,16 +13,16 @@ const (
 	commandLineTo    = uint8(2)
 	commandClosePath = uint8(7)
 )
-const extent uint32 = 256 // TODO: This needs to be read from config
+const extent uint32 = 4096 // TODO: This needs to be read from config
 
 var currentX int64 = 0
 var currentY int64 = 0
 
 type layerMeta struct {
-	keyIndex uint32
+	keyIndex   uint32
 	valueIndex uint32
-	keys map[string]uint32
-	values map[interface{}]uint32
+	keys       map[string]uint32
+	values     map[interface{}]uint32
 }
 
 var count = 0
@@ -147,7 +148,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 
 		pbLayer.Values = pbValues
 	}
-		
+
 	// Write the protobuffer tile file to the database
 	out, err := proto.Marshal(&pbTile)
 	if err != nil {
@@ -176,7 +177,7 @@ func EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature)
 func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
 	command := make([]uint32, len(coordinates)*2+1)
 	command[0] = uint32(uint32(id&0x7)) | uint32((len(coordinates) << 3))
-	
+
 	for index, coordinate := range coordinates {
 		// We have the TILE coordinates stored in the feature itself.
 		// We now need a offset to this coordinates and multiply that by the tiles pixels resolution
@@ -185,7 +186,7 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 
 		dX := -currentX + x
 		dY := -currentY + y
-				
+
 		command[(index*2)+1] = uint32((int64(dX) << 1) ^ (int64(dX) >> 31)) // Longitude
 		command[(index*2)+2] = uint32((int64(dY) << 1) ^ (int64(dY) >> 31)) // Latitude
 
@@ -195,7 +196,6 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 
 	return command
 }
-
 
 /* Protobuffer helper */
 func GetOrCreateLayer(tile *Tile, name string) *Tile_Layer {

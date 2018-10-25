@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Simple conversion tests using data from MapKit.
 func TestColumnFromLongitude(t *testing.T) {
 	column := ColumnFromLongitude(8.4649658203125, 16)
 	if column != 34309 {
