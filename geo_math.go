@@ -15,8 +15,5 @@ func ColumnFromLongitudeF(lon float64, zoom int) float64 {
 }
 
 func RowFromLatitudeF(lat float64, zoom int) float64 {
-	return float64(
-		(1.0 - math.Log(math.Tan(float64(lat) * math.Pi / 180.0) + 1.0 / math.Cos(float64(lat) * math.Pi / 180.0)) / math.Pi) / 
-		(2.0 * math.Pow(2.0, float64(zoom)))
-	)
+	return float64((1.0 - math.Log(math.Tan(float64(lat)*math.Pi/180.0)+1.0/math.Cos(float64(lat)*math.Pi/180.0))/math.Pi) / 2.0 * math.Pow(2.0, float64(zoom)))
 }
