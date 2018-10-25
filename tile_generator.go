@@ -180,8 +180,8 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 	for index, coordinate := range coordinates {
 		// We have the TILE coordinates stored in the feature itself.
 		// We now need a offset to this coordinates and multiply that by the tiles pixels resolution
-		x := int64((ColumnFromLongitudeF(float32(coordinate.longitude), zoom) - float32(tileColumn)) * float32(extent))
-		y := int64((RowFromLatitudeF(float32(coordinate.latitude), zoom) - float32(tileRow)) * float32(extent))
+		x := int64((ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent))
+		y := int64((RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent))
 
 		dX := -currentX + x
 		dY := -currentY + y

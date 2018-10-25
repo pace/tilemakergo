@@ -14,7 +14,7 @@ import (
 type metadata struct {
 	name        string
 	description string
-	bounds      []float32 // Order: left, bottom, right, top
+	bounds      []float64 // Order: left, bottom, right, top
 }
 
 type tileData struct {

@@ -92,8 +92,8 @@ func main() {
 			)
 
 			for _, coordinate := range f.coordinates {
-				var col = int(ColumnFromLongitudeF(float32(coordinate.longitude), ZOOM))
-				var row = int(RowFromLatitudeF(float32(coordinate.latitude), ZOOM))
+				var col = int(ColumnFromLongitudeF(float64(coordinate.longitude), ZOOM))
+				var row = int(RowFromLatitudeF(float64(coordinate.latitude), ZOOM))
 
 				if minCol == 0 || minCol > col {
 					minCol = col
@@ -160,11 +160,11 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		meta := metadata{name: "pace", description: "pacetiles", bounds: []float32{
-			float32(minLongitude),
-			float32(minLatitude),
-			float32(maxLongitude),
-			float32(maxLatitude)}}
+		meta := metadata{name: "pace", description: "pacetiles", bounds: []float64{
+			float64(minLongitude),
+			float64(minLatitude),
+			float64(maxLongitude),
+			float64(maxLatitude)}}
 
 		writer(0, writeChan, "karlsruhe.mbtiles", &meta)
 	}()
