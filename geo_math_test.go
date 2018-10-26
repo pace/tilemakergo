@@ -34,8 +34,9 @@ func TestColumnFromLongitudeF(t *testing.T) {
 
 func TestRowFromLatitudeF(t *testing.T) {
 	epsilon := float64(0.00001)
-	rowf := RowFromLatitudeF(49.0198591908, 16)
+	rowf := RowFromLatitudeF(49.01913870510856, 16)
 	if math.Abs(rowf-22501.2) > epsilon {
 		fmt.Printf("Expected row 22501.2, but got %f\n", rowf)
+		t.Fail()
 	}
 }

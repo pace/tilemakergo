@@ -66,7 +66,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		currentY = 0
 
 		// TODO: Split up feature so that we only ever draw 1 "pixel" out of our bounds
-		// TODO: We must make sure that a feature is not just cut of but split, in case it enters 
+		// TODO: We must make sure that a feature is not just cut of but split, in case it enters
 		// TODO: the current tile again
 
 		var commands []uint32
@@ -79,49 +79,51 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 			commands = EncodePolygon(row, column, tile.zoomLevel, feature)
 		}
 
-		pbFeature.Geometry = commands
+		if len(commands) > 0 {
+			pbFeature.Geometry = commands
 
-		// Encode all keys (properties) for this feature.
-		// NOTE: Multiple features can reference the same key / value.
-		// Process:
-		// If a key (or value) is not yet in this tile, append it and reference it in this feature
-		// If a key (or value) exists in this tile, only reference it
-		for key, value := range feature.properties {
-			if _, ok := currentMeta.keys[key]; ok {
-				pbFeature.Tags = append(pbFeature.Tags, currentMeta.keys[key])
-			} else {
-				pbFeature.Tags = append(pbFeature.Tags, currentMeta.keyIndex)
-				currentMeta.keys[key] = currentMeta.keyIndex
-				currentMeta.keyIndex++
+			// Encode all keys (properties) for this feature.
+			// NOTE: Multiple features can reference the same key / value.
+			// Process:
+			// If a key (or value) is not yet in this tile, append it and reference it in this feature
+			// If a key (or value) exists in this tile, only reference it
+			for key, value := range feature.properties {
+				if _, ok := currentMeta.keys[key]; ok {
+					pbFeature.Tags = append(pbFeature.Tags, currentMeta.keys[key])
+				} else {
+					pbFeature.Tags = append(pbFeature.Tags, currentMeta.keyIndex)
+					currentMeta.keys[key] = currentMeta.keyIndex
+					currentMeta.keyIndex++
+				}
+
+				if _, ok := currentMeta.values[value]; ok {
+					pbFeature.Tags = append(pbFeature.Tags, currentMeta.values[value])
+				} else {
+					pbFeature.Tags = append(pbFeature.Tags, currentMeta.valueIndex)
+					currentMeta.values[value] = currentMeta.valueIndex
+					currentMeta.valueIndex++
+				}
 			}
 
-			if _, ok := currentMeta.values[value]; ok {
-				pbFeature.Tags = append(pbFeature.Tags, currentMeta.values[value])
-			} else {
-				pbFeature.Tags = append(pbFeature.Tags, currentMeta.valueIndex)
-				currentMeta.values[value] = currentMeta.valueIndex
-				currentMeta.valueIndex++
-			}
+			// Variant type encoding
+			// The use of values is described in section 4.1 of the specification
+			// type Tile_Value struct {
+			//  // Exactly one of these values must be present in a valid message
+			//  StringValue                  *string  `protobuf:"bytes,1,opt,name=string_value,json=stringValue" json:"string_value,omitempty"`
+			//  FloatValue                   *float32 `protobuf:"fixed32,2,opt,name=float_value,json=floatValue" json:"float_value,omitempty"`
+			//  DoubleValue                  *float64 `protobuf:"fixed64,3,opt,name=double_value,json=doubleValue" json:"double_value,omitempty"`
+			//  IntValue                     *int64   `protobuf:"varint,4,opt,name=int_value,json=intValue" json:"int_value,omitempty"`
+			//  UintValue                    *uint64  `protobuf:"varint,5,opt,name=uint_value,json=uintValue" json:"uint_value,omitempty"`
+			//  SintValue                    *int64   `protobuf:"zigzag64,6,opt,name=sint_value,json=sintValue" json:"sint_value,omitempty"`
+			//  BoolValue                    *bool    `protobuf:"varint,7,opt,name=bool_value,json=boolValue" json:"bool_value,omitempty"`
+			//  proto.XXX_InternalExtensions `json:"-"`
+			//  XXX_unrecognized             []byte `json:"-"`
+			// }
+			// Append features to the layers feature
+			pbLayer.Features = append(pbLayer.Features, &pbFeature)
+
+			layerMetas[*feature.layer] = currentMeta
 		}
-
-		// Variant type encoding
-		// The use of values is described in section 4.1 of the specification
-		// type Tile_Value struct {
-		//  // Exactly one of these values must be present in a valid message
-		//  StringValue                  *string  `protobuf:"bytes,1,opt,name=string_value,json=stringValue" json:"string_value,omitempty"`
-		//  FloatValue                   *float32 `protobuf:"fixed32,2,opt,name=float_value,json=floatValue" json:"float_value,omitempty"`
-		//  DoubleValue                  *float64 `protobuf:"fixed64,3,opt,name=double_value,json=doubleValue" json:"double_value,omitempty"`
-		//  IntValue                     *int64   `protobuf:"varint,4,opt,name=int_value,json=intValue" json:"int_value,omitempty"`
-		//  UintValue                    *uint64  `protobuf:"varint,5,opt,name=uint_value,json=uintValue" json:"uint_value,omitempty"`
-		//  SintValue                    *int64   `protobuf:"zigzag64,6,opt,name=sint_value,json=sintValue" json:"sint_value,omitempty"`
-		//  BoolValue                    *bool    `protobuf:"varint,7,opt,name=bool_value,json=boolValue" json:"bool_value,omitempty"`
-		//  proto.XXX_InternalExtensions `json:"-"`
-		//  XXX_unrecognized             []byte `json:"-"`
-		// }
-		// Append features to the layers feature
-		pbLayer.Features = append(pbLayer.Features, &pbFeature)
-
-		layerMetas[*feature.layer] = currentMeta
 	}
 
 	for name, meta := range layerMetas {
@@ -164,16 +166,80 @@ func EncodeNode(tileRow uint32, tileColumn uint32, zoom int, node feature) []uin
 	return Command(commandMoveTo, tileRow, tileColumn, zoom, node.coordinates[0:1])
 }
 func EncodeWay(tileRow uint32, tileColumn uint32, zoom int, way feature) []uint32 {
-	// A way consist of a initial moveTo command followed by one or more lineTo command.
-	return append(
-		Command(commandMoveTo, tileRow, tileColumn, zoom, way.coordinates[0:1]),
-		Command(commandLineTo, tileRow, tileColumn, zoom, way.coordinates[1:len(way.coordinates)])...)
+	// A way consists of a initial moveTo command followed by one or more lineTo command.
+	// For a way, skip parts which are outside the tile.
+	return CutCommand(tileRow, tileColumn, zoom, way.coordinates[0:len(way.coordinates)])
 }
 func EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature) []uint32 {
 	// A way consist of a initial moveTo command followed by one or more lineTo command and a closePath command.
 	return append(
 		EncodeWay(tileRow, tileColumn, zoom, polygon),
 		Command(commandClosePath, tileRow, tileColumn, zoom, []coordinate{})...)
+}
+
+// Remove coordinates which are outside of the tile, cut in multiple lists and process as Command
+func CutCommand(tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
+	if len(coordinates) == 0 {
+		return make([]uint32, 0, 0)
+	}
+	insideTile := false
+	didEnterTile := false
+
+	combinedCommands := make([]uint32, 0, len(coordinates)*2+1)
+
+	currentCoordinates := make([]coordinate, 0, len(coordinates))
+
+	for index, coord := range coordinates {
+		tileX := uint32(ColumnFromLongitude(coord.longitude, zoom))
+		tileY := uint32(RowFromLatitude(coord.latitude, zoom))
+
+		if (tileX == tileColumn) && (tileY == tileRow) {
+			didEnterTile = true
+			// Was outside? -> restart.
+			if insideTile == false {
+				currentCoordinates = make([]coordinate, 0, len(coordinates)-index)
+
+				// Use previous coordinate as a starting point if possible:
+				if index > 0 {
+					currentCoordinates = append(currentCoordinates, coordinates[index-1])
+				}
+			}
+
+			// Add current coordinate.
+			currentCoordinates = append(currentCoordinates, coord)
+
+			insideTile = true
+		} else {
+			// Was inside? -> draw.
+			if insideTile {
+
+				// Add last coordinate to draw outside of bounds.
+				currentCoordinates = append(currentCoordinates, coord)
+
+				combinedCommands = append(combinedCommands, Command(commandMoveTo, tileRow, tileColumn, zoom, currentCoordinates[0:1])...)
+				if len(currentCoordinates) > 1 {
+					combinedCommands = append(combinedCommands, Command(commandLineTo, tileRow, tileColumn, zoom, currentCoordinates[1:len(currentCoordinates)])...)
+				}
+			}
+
+			insideTile = false
+		}
+	}
+
+	// Return empty command if we never entered the tile.
+	if !didEnterTile {
+		return make([]uint32, 0, 0)
+	}
+
+	if insideTile {
+		// Encode last slice.
+		combinedCommands = append(combinedCommands, Command(commandMoveTo, tileRow, tileColumn, zoom, currentCoordinates[0:1])...)
+		if len(currentCoordinates) > 1 {
+			combinedCommands = append(combinedCommands, Command(commandLineTo, tileRow, tileColumn, zoom, currentCoordinates[1:len(currentCoordinates)])...)
+		}
+	}
+
+	return combinedCommands
 }
 
 func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
