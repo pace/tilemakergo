@@ -15,8 +15,8 @@ const (
 )
 const extent uint32 = 4096 // TODO: This needs to be read from config
 
-var currentX int64 = 0
-var currentY int64 = 0
+var currentX = float64(0.0)
+var currentY = float64(0.0)
 
 type layerMeta struct {
 	keyIndex   uint32
@@ -62,8 +62,8 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 
 		// Encode all commands needed to draw this feature
 		// Reset the pointer to allow correct relative drawing
-		currentX = 0
-		currentY = 0
+		currentX = 0.0
+		currentY = 0.0
 
 		// TODO: Split up feature so that we only ever draw 1 "pixel" out of our bounds
 		// TODO: We must make sure that a feature is not just cut of but split, in case it enters
@@ -190,8 +190,8 @@ func CutCommand(tileRow uint32, tileColumn uint32, zoom int, coordinates []coord
 	currentCoordinates := make([]coordinate, 0, len(coordinates))
 
 	for index, coord := range coordinates {
-		tileX := uint32(ColumnFromLongitude(coord.longitude, zoom))
-		tileY := uint32(RowFromLatitude(coord.latitude, zoom))
+		tileX := uint32(ColumnFromLongitude(float64(coord.longitude), zoom))
+		tileY := uint32(RowFromLatitude(float64(coord.latitude), zoom))
 
 		if (tileX == tileColumn) && (tileY == tileRow) {
 			didEnterTile = true
@@ -249,8 +249,8 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 	for index, coordinate := range coordinates {
 		// We have the TILE coordinates stored in the feature itself.
 		// We now need a offset to this coordinates and multiply that by the tiles pixels resolution
-		x := int64((ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent))
-		y := int64((RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent))
+		x := (ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent)
+		y := (RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent)
 
 		dX := -currentX + x
 		dY := -currentY + y
