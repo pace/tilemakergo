@@ -62,27 +62,44 @@ func main() {
 	var threads = 4 // TODO: Read from flags
 	var qlen = 10000
 
-	inChan := make(chan interface{}, qlen)
 	storeChan := make(chan feature, qlen)
 	exportChan := make(chan tileFeatures, qlen)
 	writeChan := make(chan tileData, qlen)
 
 	var wg sync.WaitGroup
 
-	// Launch reader routine
+	nodes, ways, relations := reader(*inputFilePtr)
+
+	featureChan := make(chan interface{}, qlen)
+
+	// Launch processor routines
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reader(0, *inputFilePtr, inChan)
-		close(inChan)
+		for _, v := range nodes {
+			featureChan <- v
+		}
+
+		for _, v := range ways {
+			featureChan <- v
+		}
+
+		for _, v := range relations {
+			featureChan <- v
+		}
+
+		close(featureChan)
+
+		log.Printf("Added all features to process queue")
 	}()
 
-	// Launch processor routines
 	for w := 0; w < threads; w++ {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			processor(*processorFilePtr, inChan, storeChan)
+			log.Printf("Processor %d started", w)
+			processor(&nodes, featureChan, storeChan)
+			log.Printf("Processor %d done", w)
 		}(w)
 	}
 
@@ -148,12 +165,27 @@ func main() {
 					}
 				}
 			}
-
 		}
+
+					log.Printf("Store")
+
+
+		// go func() {
+			// Write stored data into exportChan
+			for _, features := range tiles {
+				exportChan <- features
+			}
+
+			close(exportChan)
+		// }()
+
+		log.Printf("Mapper done")
 	}()
 
 	// Wait until all data is processed (all routines ended)
 	wg.Wait()
+
+	log.Printf("Start export")
 
 	// Start exporter routines
 	var wgExporter sync.WaitGroup
@@ -181,13 +213,6 @@ func main() {
 
 		writer(0, writeChan, *outputFilePtr, &meta)
 	}()
-
-	// Write stored data into exportChan
-	for _, features := range tiles {
-		exportChan <- features
-	}
-
-	close(exportChan)
 
 	// Wait until expoerter finished it's jobs and close write channel
 	wgExporter.Wait()
