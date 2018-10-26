@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"sync"
-	"github.com/pkg/profile"
+	"log"
+	// "github.com/pkg/profile"
 )
 
 const (
@@ -46,9 +48,18 @@ var nodeCoordinatesSemaphore = make(chan struct{}, 1)
 var tiles = map[int64]tileFeatures{}
 
 func main() {
-	defer profile.Start().Stop()
+	// defer profile.Start().Stop()
 
-	var threads = 4
+	// Parse & validate arguments
+	inputFilePtr := flag.String("in", "input.osm.pbf", "The osm pbf file to parse")
+	outputFilePtr := flag.String("out", "output.mbtiles", "The output mbtiles database. If it already exists, an upsert will be performed")
+	processorFilePtr := flag.String("processor", "processor.js", "The javascript file to process the content")
+
+    flag.Parse()
+
+    log.Printf("Start parsing of %s -> %s [%s]", *inputFilePtr, *outputFilePtr, *processorFilePtr)
+
+	var threads = 4 // TODO: Read from flags
 	var qlen = 10000
 
 	inChan := make(chan interface{}, qlen)
@@ -62,7 +73,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reader(0, "karlsruhe.pbf", inChan)
+		reader(0, *inputFilePtr, inChan)
 		close(inChan)
 	}()
 
@@ -71,7 +82,7 @@ func main() {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			processor("example/pace.js", inChan, storeChan)
+			processor(*processorFilePtr, inChan, storeChan)
 		}(w)
 	}
 
@@ -149,10 +160,12 @@ func main() {
 
 	// TODO: This seems to be not multi-thread safe
 	// TODO: Check why and improve speed
+	wg.Add(1)
+	wgExporter.Add(1)
 	go func() {
 		defer wg.Done()
 		defer wgExporter.Done()
-		exporter(w, exportChan, writeChan)
+		exporter(0, exportChan, writeChan)
 	}()
 
 	// Starter writer routine
@@ -166,7 +179,7 @@ func main() {
 			float64(maxLongitude),
 			float64(maxLatitude)}}
 
-		writer(0, writeChan, "karlsruhe.mbtiles", &meta)
+		writer(0, writeChan, *outputFilePtr, &meta)
 	}()
 
 	// Write stored data into exportChan

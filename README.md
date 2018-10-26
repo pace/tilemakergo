@@ -21,5 +21,5 @@ go build
 ## Run
 
 ```
-./tilemakergo -i input_file.pbf -o output_file.mbtiles
+./tilemakergo -in=karlsruhe.pbf -out=karlsruhe.mbtiles -processor=example/pace.js
 ```

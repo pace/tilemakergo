@@ -32,8 +32,6 @@ func exporter(id int, jobs <-chan tileFeatures, results chan<- tileData) {
 	for features := range jobs {
 		results <- EncodeFeatures(&features)
 	}
-
-	log.Printf("Exported %d count\n", count)
 }
 
 func EncodeFeatures(tile *tileFeatures) tileData {

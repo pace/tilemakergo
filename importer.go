@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -50,54 +49,13 @@ func reader(id int, sourceFile string, node chan<- interface{}) {
 		}
 	}
 
-	fmt.Printf("Finished importing: %d nodes, %d ways and %d relations.\n", nodeCount, wayCount, relationCount)
-}
-
-func inKeySet(keys []string, tags map[string]string) (included bool) {
-	included = false
-
-	for _, key := range keys {
-		if _, i := tags[key]; i {
-			included = true
-			return
-		}
-	}
-
-	return
+	log.Printf("Finished importing: %d nodes, %d ways and %d relations.\n", nodeCount, wayCount, relationCount)
 }
 
 // Goes through every node / way / relation and checks:
 // - If it should be included
 // - In which layer and with which attributes it should be included
 func processor(javascript string, jobs <-chan interface{}, results chan<- feature) {
-	var js = new(JavascriptEngine)
-	js.Load(javascript)
-
-	// Get include keys
-	node_obj, _ := js.vm.Get("node_keys")
-	node_keys, _ := node_obj.Export()
-	parsed_node_keys, err := node_keys.([]string)
-
-	if (err) {
-		parsed_node_keys = []string{}
-	}
-
-	way_obj, _ := js.vm.Get("way_keys")
-	way_keys, _ := way_obj.Export()
-	parsed_way_keys, err := way_keys.([]string)
-
-	if (err) {
-		parsed_way_keys = []string{}
-	}
-
-	relation_obj, _ := js.vm.Get("relation_keys")
-	relation_keys, _ := relation_obj.Export()
-	parsed_relation_keys, err := relation_keys.([]string)
-
-	if (err) {
-		parsed_relation_keys = []string{}
-	}
-
 	for v := range jobs {
 		switch v := v.(type) {
 		case *osmpbf.Node:
@@ -107,22 +65,8 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 			<-nodeCoordinatesSemaphore // Release
 
 			// Process Node v.
-			if inKeySet(parsed_node_keys, v.Tags) {
-				processedNode, _ := js.Call(`processNode`, v)
-
-				// layer
-				layerValue, _ := processedNode.Object().Get("layer")
-				layerString, _ := layerValue.ToString()
-
-				// The js had the chance to check / modify / copy the tags associated to 
-				// the way and return a KV set of values itself to encode
-				processedValues, _ := processedNode.Object().Get("properties")
-				exportedProperties, err := processedValues.Export()
-				propertiesInterface := make(map[string]interface{})
-
-				if (err == nil) {
-					propertiesInterface = exportedProperties.(map[string]interface{})
-				}
+			if nodeIncluded(v.Tags) {
+				layerString, propertiesInterface := processNode(v.Tags)
 
 				// create and pass feature
 				nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
@@ -133,22 +77,8 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 
 		case *osmpbf.Way:
 			// Process Way v.
-			if inKeySet(parsed_way_keys, v.Tags) {
-				processedWay, _ := js.Call(`processWay`, v)
-
-				// The layer of the way was determined by the js
-				layerValue, _ := processedWay.Object().Get("layer")
-				layerString, _ := layerValue.ToString()
-
-				// The js had the chance to check / modify / copy the tags associated to 
-				// the way and return a KV set of values itself to encode
-				processedValues, _ := processedWay.Object().Get("properties")
-				exportedProperties, err := processedValues.Export()
-				propertiesInterface := make(map[string]interface{})
-
-				if (err == nil) {
-					propertiesInterface = exportedProperties.(map[string]interface{})
-				}
+			if wayIncluded(v.Tags) {
+				layerString, propertiesInterface := processWay(v.Tags)
 
 				// create and pass feature
 				nodeCoordinatesSemaphore <- struct{}{} // Acquire semaphore token
@@ -163,13 +93,7 @@ func processor(javascript string, jobs <-chan interface{}, results chan<- featur
 
 		case *osmpbf.Relation:
 			// Process Relation v.
-			if inKeySet(parsed_relation_keys, v.Tags) {
-				// retValue, _ = js.Call(`processRelation`, v)
-
-				// layer
-				//layerValue, _ := retValue.Object().Get("layer")
-				//layerString, _ := layerValue.ToString()
-
+			if relationIncluded(v.Tags) {
 				// TODO: Do "something" with that data ;-)
 			}
 
