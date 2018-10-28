@@ -46,7 +46,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		var currentMeta layerMeta
 
 		// Check if there is already a supporting layer meta
-		if meta, ok := layerMetas[feature.layer]; ok {
+		if meta, ok := layerMetas[*feature.layer]; ok {
 			currentMeta = meta
 		} else {
 			currentMeta = layerMeta{0, 0, make(map[string]uint32), make(map[interface{}]uint32)}
@@ -121,7 +121,7 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 		// Append features to the layers feature
 		pbLayer.Features = append(pbLayer.Features, &pbFeature)
 
-		layerMetas[feature.layer] = currentMeta
+		layerMetas[*feature.layer] = currentMeta
 	}
 
 	for name, meta := range layerMetas {
@@ -200,10 +200,10 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 }
 
 /* Protobuffer helper */
-func GetOrCreateLayer(tile *Tile, name string) *Tile_Layer {
+func GetOrCreateLayer(tile *Tile, name *string) *Tile_Layer {
 	// Check if this tile already contains the layer and if not create it
 	for _, layer := range tile.Layers {
-		if *layer.Name == name {
+		if *layer.Name == *name {
 			return layer
 		}
 	}
@@ -214,7 +214,7 @@ func GetOrCreateLayer(tile *Tile, name string) *Tile_Layer {
 	layer := Tile_Layer{}
 	layer.Features = make([]*Tile_Feature, 0)
 	layer.Extent = &ex
-	layer.Name = &newName
+	layer.Name = newName
 	layer.Version = &version
 	tile.Layers = append(
 		tile.Layers,

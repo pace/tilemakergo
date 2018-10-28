@@ -85,13 +85,11 @@ func (d *decoder) readOsmPbf(path *string) {
 
 	switch(blobHeader.GetType()) {
 		case "OSMHeader": 
-			osmHeader, err := (*d).decodeOSMHeader(blob)
+			_, err := (*d).decodeOSMHeader(blob)
 
 			if err != nil {
 				log.Printf("Error while decoding osm header: %s", err)
 			}
-
-			log.Printf("OSM Header read: %s\n", osmHeader)
 
 			(*d).decodeOsmData(buffer, reader)
 		default:

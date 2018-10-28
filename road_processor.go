@@ -44,73 +44,73 @@ func relationIncluded(tags *map[string]string) (bool) {
 
 // Process functions
 
-func processNode(tags map[string]string) (layer string, properties map[string]interface{}) {
+func processNode(tags *map[string]string) (layer *string, properties map[string]interface{}) {
   properties = map[string]interface{}{}
-  layer = ""
+  layer = nil
 
-  if v, ok := tags["addr:housenumber"]; ok {
-    layer = house_number_layer;
-    properties["nm"] = tags["name"]
+  if v, ok := (*tags)["addr:housenumber"]; ok {
+    layer = &house_number_layer;
+    properties["nm"] = (*tags)["name"]
     properties["hn"] = v
-    properties["st"] = tags["addr:street"]
-  } else if v, ok := tags["highway"]; ok && v == "speed_camera" {
-    layer = poi_layer;
-    properties["nm"] = tags["name"];
+    properties["st"] = (*tags)["addr:street"]
+  } else if v, ok := (*tags)["highway"]; ok && v == "speed_camera" {
+    layer = &poi_layer;
+    properties["nm"] = (*tags)["name"];
     properties["hw"] = v;
-    properties["ms"] = tags["maxspeed"];
+    properties["ms"] = (*tags)["maxspeed"];
   } 
 
   return
 }
 
-func processWay(tags map[string]string) (layer string, properties map[string]interface{}) {
-  layer = road_4_layer;
+func processWay(tags *map[string]string) (layer *string, properties map[string]interface{}) {
+  layer = &road_4_layer;
 
   properties = map[string]interface{}{}
 
-  if v, ok := tags["addr:housenumber"]; ok {
+  if v, ok := (*tags)["addr:housenumber"]; ok {
     properties["hn"] = v
   }
 
-  if v, ok := tags["addr:street"]; ok {
+  if v, ok := (*tags)["addr:street"]; ok {
   	properties["st"] = v
   }
 
-  if highway, ok := tags["highway"]; ok {
+  if highway, ok := (*tags)["highway"]; ok {
     if (contains(road_1_highway_types, highway)) {
-      layer = road_1_layer
+      layer = &road_1_layer
     } else if (contains(road_2_highway_types, highway)) {
-      layer = road_2_layer
+      layer = &road_2_layer
     } else if (contains(road_3_highway_types, highway)) {
-      layer = road_3_layer
+      layer = &road_3_layer
     }
 
     properties["hw"] = highway;
-  } else if _, ok := tags["addr:housenumber"]; ok {
-    layer = house_number_layer
+  } else if _, ok := (*tags)["addr:housenumber"]; ok {
+    layer = &house_number_layer
   }
 
-  if v, ok := tags["name"]; ok {
+  if v, ok := (*tags)["name"]; ok {
     properties["nm"] = v
   }
 
-  if v, ok := tags["ref"]; ok {
+  if v, ok := (*tags)["ref"]; ok {
     properties["rf"] = v
   }
 
-  if v, ok := tags["lanes"]; ok {
+  if v, ok := (*tags)["lanes"]; ok {
     properties["ln"] = v
   }
 
-  if v, ok := tags["maxspeed"]; ok {
+  if v, ok := (*tags)["maxspeed"]; ok {
     properties["ms"] = v
   }
 
-  if v, ok := tags["overtaking"]; ok {
+  if v, ok := (*tags)["overtaking"]; ok {
     properties["ot"] = v
   }
 
-  if v, ok := tags["oneway"]; ok {
+  if v, ok := (*tags)["oneway"]; ok {
     properties["ow"] = v
   }
 

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"log"
 
-	"github.com/pkg/profile"
+	// "github.com/pkg/profile"
 )
 
 const (
@@ -22,14 +22,14 @@ const (
 )
 
 type coordinate struct {
-	latitude  float64
-	longitude float64
+	latitude  float32
+	longitude float32
 }
 
 type feature struct {
 	id          int64
 	typ         uint8
-	layer       string
+	layer       *string
 	coordinates []coordinate
 	properties  map[string]interface{}
 }
@@ -49,7 +49,7 @@ var nodeCoordinatesSemaphore = make(chan struct{}, 1)
 var tiles = map[int64]tileFeatures{}
 
 func main() {
-	defer profile.Start(profile.MemProfile).Stop()
+	// defer profile.Start(profile.MemProfile).Stop()
 
 	// Parse & validate arguments
 	inputFilePtr := flag.String("in", "input.osm.pbf", "The osm pbf file to parse")
