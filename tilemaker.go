@@ -4,7 +4,8 @@ import (
 	"flag"
 	"sync"
 	"log"
-	// "github.com/pkg/profile"
+
+	"github.com/pkg/profile"
 )
 
 const (
@@ -48,7 +49,7 @@ var nodeCoordinatesSemaphore = make(chan struct{}, 1)
 var tiles = map[int64]tileFeatures{}
 
 func main() {
-	// defer profile.Start().Stop()
+	defer profile.Start(profile.MemProfile).Stop()
 
 	// Parse & validate arguments
 	inputFilePtr := flag.String("in", "input.osm.pbf", "The osm pbf file to parse")
@@ -57,127 +58,55 @@ func main() {
 
     flag.Parse()
 
+    // Wait group
+
     log.Printf("Start parsing of %s -> %s [%s]", *inputFilePtr, *outputFilePtr, *processorFilePtr)
 
-	var threads = 4 // TODO: Read from flags
+	var wg sync.WaitGroup
 	var qlen = 10000
+	// var threads = 8
 
 	storeChan := make(chan feature, qlen)
+	metaChan := make(chan bounds)
 	exportChan := make(chan tileFeatures, qlen)
 	writeChan := make(chan tileData, qlen)
 
-	var wg sync.WaitGroup
-
-	nodes, ways, relations := reader(*inputFilePtr)
-
-	featureChan := make(chan interface{}, qlen)
-
-	// Launch processor routines
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for _, v := range nodes {
-			featureChan <- v
-		}
-
-		for _, v := range ways {
-			featureChan <- v
-		}
-
-		for _, v := range relations {
-			featureChan <- v
-		}
-
-		close(featureChan)
-
-		log.Printf("Added all features to process queue")
-	}()
-
-	for w := 0; w < threads; w++ {
-		wg.Add(1)
-		go func(w int) {
-			defer wg.Done()
-			log.Printf("Processor %d started", w)
-			processor(&nodes, featureChan, storeChan)
-			log.Printf("Processor %d done", w)
-		}(w)
-	}
-
-	// store bounds for writing meta data later
-	var (
-		minLatitude  float64
-		minLongitude float64
-		maxLatitude  float64
-		maxLongitude float64
-	)
+	reader(*inputFilePtr, storeChan, metaChan)
 
 	// run our storage routine
+	// TODO: make multithread?
 	go func() {
 		for f := range storeChan {
-			// store somehow
-			var (
-				minCol int
-				minRow int
-				maxCol int
-				maxRow int
-			)
+			writtenIndexes := map[int64]bool{}
 
-			for _, coordinate := range f.coordinates {
-				var col = int(ColumnFromLongitudeF(float64(coordinate.longitude), ZOOM))
-				var row = int(RowFromLatitudeF(float64(coordinate.latitude), ZOOM))
+			for _, coord := range f.coordinates {
+				var col = int(ColumnFromLongitudeF(float64(coord.longitude), ZOOM))
+				var row = int(RowFromLatitudeF(float64(coord.latitude), ZOOM))
+				var idx = ZOOM + (int64(row) * MAX_ROWS) + (int64(col) * (MAX_COLS * MAX_ROWS))
 
-				if minCol == 0 || minCol > col {
-					minCol = col
-				}
-				if maxCol < col {
-					maxCol = col
-				}
-				if minRow == 0 || minRow > row {
-					minRow = row
-				}
-				if maxRow < row {
-					maxRow = row
+				if written, contained := writtenIndexes[idx]; contained && written {
+					continue
 				}
 
-				if minLatitude == 0 || minLatitude > coordinate.latitude {
-					minLatitude = coordinate.latitude
-				}
-				if maxLatitude == 0 || maxLatitude < coordinate.latitude {
-					maxLatitude = coordinate.latitude
-				}
-				if minLongitude == 0 || minLongitude > coordinate.longitude {
-					minLongitude = coordinate.longitude
-				}
-				if maxLongitude == 0 || maxLongitude < coordinate.longitude {
-					maxLongitude = coordinate.longitude
-				}
-			}
+				writtenIndexes[idx] = true
 
-			for c := minCol; c <= maxCol; c++ {
-				for r := minRow; r <= maxRow; r++ {
-					var idx = ZOOM + (int64(r) * MAX_ROWS) + (int64(c) * (MAX_COLS * MAX_ROWS))
-					if t, ok := tiles[idx]; ok {
-						t.features = append(t.features, f)
-						tiles[idx] = t
-					} else {
-						t = tileFeatures{ZOOM, int(r), int(c), []feature{f}}
-						tiles[idx] = t
-					}
+				if t, ok := tiles[idx]; ok {
+					t.features = append(t.features, f)
+					tiles[idx] = t
+				} else {
+					t = tileFeatures{ZOOM, int(row), int(col), []feature{f}}
+					tiles[idx] = t
 				}
 			}
 		}
 
-					log.Printf("Store")
+		log.Printf("Store")
 
+		for _, features := range tiles {
+			exportChan <- features
+		}
 
-		// go func() {
-			// Write stored data into exportChan
-			for _, features := range tiles {
-				exportChan <- features
-			}
-
-			close(exportChan)
-		// }()
+		close(exportChan)
 
 		log.Printf("Mapper done")
 	}()
@@ -205,13 +134,15 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		meta := metadata{name: "pace", description: "pacetiles", bounds: []float64{
-			float64(minLongitude),
-			float64(minLatitude),
-			float64(maxLongitude),
-			float64(maxLatitude)}}
+		for m := range metaChan {
+			meta := metadata{name: "pace", description: "pacetiles", bounds: []float64{
+				float64(m.minLongitude),
+				float64(m.minLatitude),
+				float64(m.maxLongitude),
+				float64(m.maxLatitude)}}
 
-		writer(0, writeChan, *outputFilePtr, &meta)
+			writer(0, writeChan, *outputFilePtr, &meta)
+		}
 	}()
 
 	// Wait until expoerter finished it's jobs and close write channel

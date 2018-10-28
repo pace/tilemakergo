@@ -14,31 +14,31 @@ var road_4_highway_types = []string{ "path", "footway", "bus_stop", "cycleway", 
 
 // Include functions
 
-func nodeIncluded(tags map[string]string) (bool) {
-	if _, ok := tags["addr:housenumber"]; ok {
+func nodeIncluded(tags *map[string]string) (bool) {
+	if _, ok := (*tags)["addr:housenumber"]; ok {
 		return true
 	}
 
-	if v, ok := tags["highway"]; ok && v == "speed_camera" {
-		return true
-	}
-
-	return false
-}
-
-func wayIncluded(tags map[string]string) (bool) {
-	if _, ok := tags["addr:housenumber"]; ok {
-		return true
-	}
-
-	if _, ok := tags["highway"]; ok {
+	if v, ok := (*tags)["highway"]; ok && v == "speed_camera" {
 		return true
 	}
 
 	return false
 }
 
-func relationIncluded(tags map[string]string) (bool) {
+func wayIncluded(tags *map[string]string) (bool) {
+	if _, ok := (*tags)["addr:housenumber"]; ok {
+		return true
+	}
+
+	if _, ok := (*tags)["highway"]; ok {
+		return true
+	}
+
+	return false
+}
+
+func relationIncluded(tags *map[string]string) (bool) {
 	return false
 }
 

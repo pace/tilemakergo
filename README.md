@@ -14,8 +14,14 @@ go get github.com/qedus/osmpbf
 
 ## Build
 
+Build the go application:
 ```
 go build
+```
+
+Build the protobuffers:
+```
+protoc -I=. -I=$GOPATH/src -I=$GOPATH/src/github.com/gogo/protobuf/protobuf --gogoslick_out=. *.proto
 ```
 
 ## Run
