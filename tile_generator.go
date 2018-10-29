@@ -252,6 +252,8 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 		x := (ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent)
 		y := (RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent)
 
+		// fmt.Printf("encoding %f %f\n", coordinate.latitude, coordinate.longitude)
+
 		dX := -currentX + x
 		dY := -currentY + y
 

@@ -3,8 +3,15 @@ package main
 import (
 	"io"
 	"log"
+	"sort"
 	"sync"
 )
+
+type osmnode struct {
+	id        int64
+	longitude float32
+	latitude  float32
+}
 
 type bounds struct {
 	minLatitude  float32
@@ -23,17 +30,20 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 
 	var bounds = bounds{}
 
-    dec := &decoder{}
+	dec := &decoder{}
 	(*dec).readOsmPbf(&sourceFile)
 
-	// We decode the pbf two times. This is due to the fact, that the osm pbf is in a 
+	// We decode the pbf two times. This is due to the fact, that the osm pbf is in a
 	// very strange format. To decode a way we need to have access to ALL nodes.
 	// Keeping all nodes in memory is very inefficent, so we load all ways first, checking which nodes
 	// are required, and then do it again but read all data in and skip unused nodes.
 
-	var nodeMap = map[int64]coordinate{}
-
 	log.Printf("Extracting required nodes from ways\n")
+
+	totalNodeCount := 0
+
+	cacheIndex := 0
+	duplicateCache := make([]int64, 1000)
 
 	for {
 		features, err := (*dec).read()
@@ -44,21 +54,85 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 
 		for _, v := range features {
 			switch v := v.(type) {
-				case *Way:
-					if wayIncluded(&v.Tags) {
-						for _, nodeID := range v.NodeIDs {
-							if _, ok := nodeMap[nodeID]; !ok {
-								nodeMap[nodeID] = coordinate{}
+			case *Way:
+				if wayIncluded(&v.Tags) {
+					for _, nodeID := range v.NodeIDs {
+						found := false
+						for _, v := range duplicateCache {
+							if v == nodeID {
+								found = true
+								break
 							}
 						}
-					}
 
-				default: continue
+						if !found {
+							totalNodeCount++
+							duplicateCache[cacheIndex] = nodeID
+							cacheIndex = (cacheIndex + 1) % len(duplicateCache)
+						}
+					}
+				}
+
+			default:
+				continue
 			}
 		}
 	}
 
-	log.Printf("\nDone. %d nodes required for ways in this extract\n", len(nodeMap))
+	dec = &decoder{}
+	(*dec).readOsmPbf(&sourceFile)
+
+	log.Printf("Counted %d nodes (including duplicates)\n", totalNodeCount)
+
+	osmNodes := make([]osmnode, totalNodeCount)
+	cacheIndex = 0
+	duplicateCache = make([]int64, 1000)
+	nodeIndex := 0
+
+	for {
+		features, err := (*dec).read()
+
+		if err == io.EOF {
+			break
+		}
+
+		for _, v := range features {
+			switch v := v.(type) {
+			case *Way:
+				if wayIncluded(&v.Tags) {
+					for _, nodeID := range v.NodeIDs {
+						found := false
+						for _, v := range duplicateCache {
+							if v == nodeID {
+								found = true
+								break
+							}
+						}
+
+						if !found {
+							osmNodes[nodeIndex].id = nodeID
+							nodeIndex++
+							duplicateCache[cacheIndex] = nodeID
+							cacheIndex = (cacheIndex + 1) % len(duplicateCache)
+						}
+					}
+				}
+
+			default:
+				continue
+			}
+		}
+	}
+
+	log.Println("Filled array with node IDs.")
+
+	sort.Slice(osmNodes, func(i, j int) bool {
+		return osmNodes[i].id < osmNodes[j].id
+	})
+
+	log.Println("Done sorting nodes.")
+
+	log.Printf("\nDone. %d nodes required for ways in this extract\n", len(osmNodes))
 
 	// Read in all features
 	dec = &decoder{}
@@ -77,11 +151,22 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 
 			for _, v := range features {
 				switch v := v.(type) {
-					case *Node:
-						nodeCoordinate := coordinate{float32(v.Lat), float32(v.Lon)}
-						
-						nodeMap[v.ID] = nodeCoordinate
+				case *Node:
+					nodeCoordinate := coordinate{float32(v.Lat), float32(v.Lon)}
 
+					foundNode := setLatLong(osmNodes, v.ID, nodeCoordinate)
+
+					if nodeIncluded(&v.Tags) {
+						foundNode = true
+						layerString, propertiesInterface := processNode(&v.Tags)
+
+						retFeature := feature{v.ID, featureTypePoint, layerString, []coordinate{nodeCoordinate}, propertiesInterface}
+						results <- retFeature
+
+						nodeCount++
+					}
+
+					if foundNode {
 						if bounds.minLatitude == 0 || bounds.minLatitude > nodeCoordinate.latitude {
 							bounds.minLatitude = nodeCoordinate.latitude
 						}
@@ -94,36 +179,28 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 						if bounds.maxLongitude == 0 || bounds.maxLongitude < nodeCoordinate.longitude {
 							bounds.maxLongitude = nodeCoordinate.longitude
 						}
+					}
+				case *Way:
+					if wayIncluded(&v.Tags) {
+						layerString, propertiesInterface := processWay(&v.Tags)
 
-						if nodeIncluded(&v.Tags) {
-							layerString, propertiesInterface := processNode(&v.Tags)
+						var coordinates []coordinate
 
-							retFeature := feature{v.ID, featureTypePoint, layerString, []coordinate{nodeCoordinate}, propertiesInterface}
-							results <- retFeature
-
-							nodeCount++
+						for _, nodeID := range v.NodeIDs {
+							coordinates = append(coordinates, getLatLong(osmNodes, nodeID))
 						}
-					case *Way:
-						if wayIncluded(&v.Tags) {
-							layerString, propertiesInterface := processWay(&v.Tags)
 
-							var coordinates []coordinate
+						retFeature := feature{v.ID, featureTypeLine, layerString, coordinates, propertiesInterface}
+						results <- retFeature
 
-							for _, nodeID := range v.NodeIDs {
-								coordinates = append(coordinates, nodeMap[nodeID])
-							}
-
-							retFeature := feature{v.ID, featureTypeLine, layerString, coordinates, propertiesInterface}
-							results <- retFeature
-
-							wayCount++
-						}
-					case *Relation:
-						if relationIncluded(&v.Tags) {
-							relationCount++
-						}
-					default: 
-						log.Printf("%s", v)
+						wayCount++
+					}
+				case *Relation:
+					if relationIncluded(&v.Tags) {
+						relationCount++
+					}
+				default:
+					log.Printf("%s", v)
 				}
 			}
 		}
@@ -133,9 +210,12 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 		// Wait for all readers to be finished
 		wg.Wait()
 
+		// Don't need nodes any more.
+		osmNodes = nil
+
 		// Close output channel
 		close(results)
-		
+
 		// Put meta data into channel
 		boundsChan <- bounds
 		close(boundsChan)
