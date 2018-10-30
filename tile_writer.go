@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strings"
-	"math"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -79,6 +79,28 @@ func CreateOrOpenDatabase(path string) *sql.DB {
 	if !exist {
 		log.Printf("Creating database schema")
 		CreateSchema(db)
+	}
+
+	return db
+}
+
+func OpenDatabase(path string) *sql.DB {
+	exist := true
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		exist = false
+	}
+
+	db, err := sql.Open("sqlite3", path)
+
+	if err != nil {
+		log.Printf("Could not find database at %q\n", path)
+		os.Exit(1)
+	}
+
+	if !exist {
+		log.Printf("Cannot open database %q for input\n", path)
+		os.Exit(1)
 	}
 
 	return db
