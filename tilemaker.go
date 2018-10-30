@@ -60,7 +60,7 @@ func main() {
 
     // Wait group
 
-    log.Printf("Start parsing of %s -> %s [%s] [%d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
+    log.Printf("Start parsing of %s -> %s [%s] [Threads: %d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
 
 	var wg sync.WaitGroup
 	var qlen = 1000
@@ -114,7 +114,7 @@ func main() {
 
 	// TODO: This seems to be not multi-thread safe
 	// TODO: Check why and improve speed
-	threads := 1//runtime.GOMAXPROCS(-1)
+	threads := runtime.GOMAXPROCS(-1)
 	for i := 0; i < threads; i++ {
 		wg.Add(1)
 		go func() {

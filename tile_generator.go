@@ -25,13 +25,13 @@ type layerMeta struct {
 }
 
 type encoder struct {
-	currentX 	float64
-	currentY	float64
+	currentX 	int64
+	currentY	int64
 }
 
 // Debug entry point
 func exporter(outputFilePtr *string, jobs <-chan tileFeatures) {
-	var buffer = make([]tileData, 1000)
+	var buffer = make([]tileData, 5000)
 	var bufferIndex = 0
 
 	for features := range jobs {
@@ -97,10 +97,6 @@ func (encoder *encoder) EncodeFeatures(tile *tileFeatures) tileData {
 		}
 
 		if len(commands) > 0 {
-			if column == 34504 && row == 23016 {
-				// log.Printf("Encoded feature %d: [%v]\n", feature.typ, commands)
-			}
-
 			pbFeature.Geometry = commands
 
 			// Encode all keys (properties) for this feature.
@@ -274,18 +270,14 @@ func (encoder *encoder) Command(id uint8, tileRow uint32, tileColumn uint32, zoo
 	for index, coordinate := range coordinates {
 		// We have the TILE coordinates stored in the feature itself.
 		// We now need a offset to this coordinates and multiply that by the tiles pixels resolution
-		x := (ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent)
-		y := (RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent)
+		x := int64((ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent))
+		y := int64((RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent))
 
 		dX := -(*encoder).currentX + x
 		dY := -(*encoder).currentY + y
 
 		command[(index*2)+1] = uint32((int64(dX) << 1) ^ (int64(dX) >> 31)) // Longitude
 		command[(index*2)+2] = uint32((int64(dY) << 1) ^ (int64(dY) >> 31)) // Latitude
-
-		if (command[(index*2)+1] > 10000) {
-			// log.Printf("encoding %f %f\n", coordinate.latitude, coordinate.longitude)
-		}
 
 		(*encoder).currentX = x
 		(*encoder).currentY = y
