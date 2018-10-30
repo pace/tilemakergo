@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"sync"
 	"log"
-	"runtime"	
+	"runtime"
+	"sync"
 	// "github.com/pkg/profile"
 )
 
@@ -49,20 +49,46 @@ var nodeCoordinatesSemaphore = make(chan struct{}, 1)
 var tiles = map[int64]tileFeatures{}
 
 func main() {
-	// defer profile.Start(profile.MemProfile).Stop()
+
+	// Check if we run in maker or merger mode:
 
 	// Parse & validate arguments
+	mode := flag.String("mode", "merger", "Tile maker or merger mode")
+	debug := flag.Int("debug", 0, "Set debug to 1 for testing.")
+
+	// Tile maker flags:
 	inputFilePtr := flag.String("in", "input.osm.pbf", "The osm pbf file to parse")
 	outputFilePtr := flag.String("out", "output.mbtiles", "The output mbtiles database. If it already exists, an upsert will be performed")
 	processorFilePtr := flag.String("processor", "processor.js", "The javascript file to process the content")
 
-    flag.Parse()
+	// Tile merger flags:
+	dbaFilePtr := flag.String("dba", "a.mbtiles", "First database to merge")
+	dbbFilePtr := flag.String("dbb", "b.mbtiles", "Second database to merge")
+	dboutFilePtr := flag.String("dbout", "out.mbtiles", "Output database")
 
-    // Wait group
+	flag.Parse()
 
-    log.Printf("Start parsing of %s -> %s [%s] [Threads: %d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
+	if *mode == "merger" {
+		mergeDatabases(*dbaFilePtr, *dbbFilePtr, *dboutFilePtr)
 
-    CreateOrOpenDatabase(*outputFilePtr)
+		if *debug != 0 {
+			verifyMerge(*dbaFilePtr, *dboutFilePtr)
+			verifyMerge(*dbbFilePtr, *dboutFilePtr)
+		}
+	} else if *mode == "maker" {
+		makeTiles(inputFilePtr, outputFilePtr, processorFilePtr)
+	} else {
+		log.Fatal("Unknown mode. Use maker or merger.\n")
+	}
+}
+
+func makeTiles(inputFilePtr *string, outputFilePtr *string, processorFilePtr *string) {
+
+	// Wait group
+
+	log.Printf("Start parsing of %s -> %s [%s] [Threads: %d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
+
+	CreateOrOpenDatabase(*outputFilePtr)
 
 	var wg sync.WaitGroup
 	var qlen = 1000
@@ -103,7 +129,7 @@ func main() {
 			}
 		}
 
-		// As we don't know which features are in what tiles, 
+		// As we don't know which features are in what tiles,
 		// We need to wait until all features are mapped to tiles
 		for _, features := range tiles {
 			exportChan <- features

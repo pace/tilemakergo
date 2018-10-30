@@ -32,8 +32,16 @@ protoc -I=. -I=$GOPATH/src -I=$GOPATH/src/github.com/gogo/protobuf/protobuf --go
 
 ## Run
 
+Tile maker mode:
+
 ```
-./tilemakergo -in=karlsruhe.pbf -out=karlsruhe.mbtiles
+./tilemakergo -mode=maker -in=karlsruhe.pbf -out=karlsruhe.mbtiles
+```
+
+Tile merger mode to merge databases a and b:
+
+```
+./tilemakergo -mode=merger -dba=a.mbtiles -dbb=b.mbtiles -dbout=out.mbtiles
 ```
 
 ## Install process [Ubuntu 18.04]
