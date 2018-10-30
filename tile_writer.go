@@ -39,13 +39,13 @@ func storeTiles(tiles []tileData, destFile string) {
 
 	transaction, err := db.Begin()
 	if err != nil {
-		log.Fatal("Can't start transaction")
+		log.Printf("Can't start transaction:", err)
 		return
 	}
 
 	insertStatement, err := transaction.Prepare("insert or replace into tiles(zoom_level, tile_column, tile_row, tile_data) values(?, ?, ?, ?)")
 	if err != nil {
-		log.Fatal("Can't start transaction")
+		log.Printf("Can't start transaction:", err)
 		return
 	}
 

@@ -62,6 +62,8 @@ func main() {
 
     log.Printf("Start parsing of %s -> %s [%s] [Threads: %d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
 
+    CreateOrOpenDatabase(*outputFilePtr)
+
 	var wg sync.WaitGroup
 	var qlen = 1000
 	// var threads = 8
