@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"sync"
 	"log"
-	"runtime"	
+	"runtime"
+	"sync"
 	// "github.com/pkg/profile"
 )
 
@@ -22,8 +22,8 @@ const (
 )
 
 type coordinate struct {
-	latitude  float32
-	longitude float32
+	latitude  float64
+	longitude float64
 }
 
 type feature struct {
@@ -56,11 +56,11 @@ func main() {
 	outputFilePtr := flag.String("out", "output.mbtiles", "The output mbtiles database. If it already exists, an upsert will be performed")
 	processorFilePtr := flag.String("processor", "processor.js", "The javascript file to process the content")
 
-    flag.Parse()
+	flag.Parse()
 
-    // Wait group
+	// Wait group
 
-    log.Printf("Start parsing of %s -> %s [%s] [Threads: %d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
+	log.Printf("Start parsing of %s -> %s [%s] [Threads: %d]", *inputFilePtr, *outputFilePtr, *processorFilePtr, runtime.GOMAXPROCS(-1))
 
 	var wg sync.WaitGroup
 	var qlen = 1000
@@ -101,7 +101,7 @@ func main() {
 			}
 		}
 
-		// As we don't know which features are in what tiles, 
+		// As we don't know which features are in what tiles,
 		// We need to wait until all features are mapped to tiles
 		for _, features := range tiles {
 			exportChan <- features

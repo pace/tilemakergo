@@ -53,5 +53,5 @@ func getLatLong(nodes []osmnode, id int64) coordinate {
 	}
 
 	fmt.Printf("GetLatLong Error: cannot find node with id %d\n", id)
-	return coordinate{float32(0.0), float32(0.0)}
+	return coordinate{float64(0.0), float64(0.0)}
 }

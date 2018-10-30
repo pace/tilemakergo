@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"sort"
+
 	// "sync"
 	// "fmt"
 
@@ -13,15 +14,15 @@ import (
 
 type osmnode struct {
 	id        int64
-	longitude float32
-	latitude  float32
+	longitude float64
+	latitude  float64
 }
 
 type bounds struct {
-	minLatitude  float32
-	minLongitude float32
-	maxLatitude  float32
-	maxLongitude float32
+	minLatitude  float64
+	minLongitude float64
+	maxLatitude  float64
+	maxLongitude float64
 }
 
 /*ImportPbf imports a .pbf file*/
@@ -135,7 +136,7 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 					}
 				}
 
-				log.Printf("Found positions of %d / %d nodes (%f)", foundCachedNodeCount, len(cachedNodePositions), float32(foundCachedNodeCount) / float32(len(cachedNodePositions)))
+				log.Printf("Found positions of %d / %d nodes (%f)", foundCachedNodeCount, len(cachedNodePositions), float32(foundCachedNodeCount)/float32(len(cachedNodePositions)))
 				log.Printf("OSM PBF file decoded completly")
 				log.Printf("Imported area bounds: [%f, %f, %f, %f]\n", bounds.minLatitude, bounds.minLongitude, bounds.maxLatitude, bounds.maxLongitude)
 
@@ -155,12 +156,12 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 			for _, v := range features {
 				switch v := v.(type) {
 				case *Node:
-					nodeCoordinate := coordinate{float32(v.Lat), float32(v.Lon)}
+					nodeCoordinate := coordinate{float64(v.Lat), float64(v.Lon)}
 					foundNode := setLatLong(cachedNodePositions, v.ID, nodeCoordinate)
 
 					if nodeIncluded(&v.Tags) {
 						foundNode = true
-						layerString, propertiesInterface := processNode(&v.Tags)
+						layerString, propertiesInterface := processNode(&v.Tags, v.ID)
 
 						retFeature := feature{v.ID, featureTypePoint, layerString, []coordinate{nodeCoordinate}, propertiesInterface}
 						results <- retFeature
@@ -182,11 +183,11 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 					}
 
 					processedNodeCount++
-					var newProgress = int((float32(processedNodeCount) / float32(totalNodeCount)) * 100) 
+					var newProgress = int((float32(processedNodeCount) / float32(totalNodeCount)) * 100)
 					if newProgress > processedNodeProgress {
 						processedNodeProgress = newProgress
 
-						if processedNodeProgress % 10 == 0 {
+						if processedNodeProgress%10 == 0 {
 							log.Printf("Decoded %d pct of nodes\n", processedNodeProgress)
 						}
 					}
@@ -205,11 +206,11 @@ func reader(sourceFile string, results chan<- feature, boundsChan chan<- bounds)
 					}
 
 					processedWayCount++
-					var newProgress = int((float32(processedWayCount) / float32(totalWayCount)) * 100) 
+					var newProgress = int((float32(processedWayCount) / float32(totalWayCount)) * 100)
 					if newProgress > processedWayProgress {
 						processedWayProgress = newProgress
 
-						if processedWayProgress % 10 == 0 {
+						if processedWayProgress%10 == 0 {
 							log.Printf("Decoded %d pct of ways\n", processedWayProgress)
 						}
 					}
