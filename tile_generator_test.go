@@ -5,6 +5,8 @@ import "testing"
 import "fmt"
 
 func TestCutCommand_LeaveAndEnterAgain(t *testing.T) {
+	encoder := &encoder{0, 0}
+
 	// Inside tile:
 	step0 := coordinate{49.01985919086641, 8.469658203125}
 	step1 := coordinate{49.01985914353444, 8.469658203125}
@@ -46,18 +48,18 @@ func TestCutCommand_LeaveAndEnterAgain(t *testing.T) {
 		}
 	}
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0.0
+	(*encoder).currentY = 0.0
 
 	// Expect commands steps[0 : 5], steps[5:8]
-	command0 := append(Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[0:1]), Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[1:5])...)
-	command1 := append(Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[5:6]), Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[6:8])...)
+	command0 := append((*encoder).Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[0:1]), (*encoder).Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[1:5])...)
+	command1 := append((*encoder).Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[5:6]), (*encoder).Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[6:8])...)
 	expectedCommand := append(command0, command1...)
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
-	cutCommand := CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
+	cutCommand := (*encoder).CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
 
 	if len(expectedCommand) != len(cutCommand) {
 		fmt.Printf("Expected %d bytes but got %d bytes\n", len(expectedCommand), len(cutCommand))
@@ -75,6 +77,7 @@ func TestCutCommand_LeaveAndEnterAgain(t *testing.T) {
 }
 
 func TestCutCommand_NotInTile(t *testing.T) {
+	encoder := &encoder{0, 0}
 	step0 := coordinate{49.01985919086641, 8.469658203125}
 	step1 := coordinate{49.01985914353444, 8.469658203125}
 	step2 := coordinate{49.01985919012332, 8.469658203125}
@@ -85,7 +88,7 @@ func TestCutCommand_NotInTile(t *testing.T) {
 	tileRow := 1200
 	tileCol := 1300
 
-	result := CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
+	result := (*encoder).CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
 
 	if len(result) != 0 {
 		fmt.Printf("Expected resulting command to be empty but got %d bytes\n", len(result))
@@ -95,6 +98,7 @@ func TestCutCommand_NotInTile(t *testing.T) {
 }
 
 func TestCutCommand_CompletelyInTile(t *testing.T) {
+	encoder := &encoder{0, 0}
 	// Inside tile:
 	step0 := coordinate{49.01985919086641, 8.469658203125}
 	step1 := coordinate{49.01985914353444, 8.469658203125}
@@ -117,16 +121,16 @@ func TestCutCommand_CompletelyInTile(t *testing.T) {
 		}
 	}
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
 	// Expect commands steps[0 : 4]
-	expectedCommand := append(Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[0:1]), Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[1:4])...)
+	expectedCommand := append((*encoder).Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[0:1]), (*encoder).Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[1:4])...)
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
-	cutCommand := CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
+	cutCommand := (*encoder).CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
 
 	if len(expectedCommand) != len(cutCommand) {
 		fmt.Printf("Expected %d bytes but got %d bytes\n", len(expectedCommand), len(cutCommand))
@@ -144,6 +148,7 @@ func TestCutCommand_CompletelyInTile(t *testing.T) {
 }
 
 func TestCutCommand_StartOutside(t *testing.T) {
+	encoder := &encoder{0, 0}
 	// Outside tile:
 	step0 := coordinate{49.01985123232333, 9.469658203125}
 	step1 := coordinate{49.01985123232333, 9.629658203125}
@@ -179,16 +184,16 @@ func TestCutCommand_StartOutside(t *testing.T) {
 		}
 	}
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
 	// Expect commands steps[1 : 4]
-	expectedCommand := append(Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[1:2]), Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[2:4])...)
+	expectedCommand := append((*encoder).Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[1:2]), (*encoder).Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[2:4])...)
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
-	cutCommand := CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
+	cutCommand := (*encoder).CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
 
 	if len(expectedCommand) != len(cutCommand) {
 		fmt.Printf("Expected %d bytes but got %d bytes\n", len(expectedCommand), len(cutCommand))
@@ -206,6 +211,7 @@ func TestCutCommand_StartOutside(t *testing.T) {
 }
 
 func TestCutCommand_BrieflyLeaveAndEnterAgain(t *testing.T) {
+	encoder := &encoder{0, 0}
 	// Inside tile:
 	step0 := coordinate{49.01985919086641, 8.469658203125}
 	step1 := coordinate{49.01985914353444, 8.469658203125}
@@ -246,18 +252,18 @@ func TestCutCommand_BrieflyLeaveAndEnterAgain(t *testing.T) {
 		}
 	}
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
 	// Expect commands steps[0 : 4], steps[5:7]
-	command0 := append(Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[0:1]), Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[1:5])...)
-	command1 := append(Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[4:5]), Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[5:7])...)
+	command0 := append((*encoder).Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[0:1]), (*encoder).Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[1:5])...)
+	command1 := append((*encoder).Command(commandMoveTo, uint32(tileRow), uint32(tileCol), 16, way[4:5]), (*encoder).Command(commandLineTo, uint32(tileRow), uint32(tileCol), 16, way[5:7])...)
 	expectedCommand := append(command0, command1...)
 
-	currentX = 0
-	currentY = 0
+	(*encoder).currentX = 0
+	(*encoder).currentY = 0
 
-	cutCommand := CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
+	cutCommand := (*encoder).CutCommand(uint32(tileRow), uint32(tileCol), 16, way)
 
 	if len(expectedCommand) != len(cutCommand) {
 		fmt.Printf("Expected %d bytes but got %d bytes\n", len(expectedCommand), len(cutCommand))
