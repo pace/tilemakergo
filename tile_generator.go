@@ -190,6 +190,10 @@ func (encoder *encoder) EncodeWay(tileRow uint32, tileColumn uint32, zoom int, w
 	// A way consists of a initial moveTo command followed by one or more lineTo command.
 	// For a way, skip parts which are outside the tile.
 	return (*encoder).CutCommand(tileRow, tileColumn, zoom, way.coordinates[0:len(way.coordinates)])
+	// return append(
+	// 	(*encoder).Command(commandMoveTo, tileRow, tileColumn, zoom, way.coordinates[0:1]),
+	// 	(*encoder).Command(commandLineTo, tileRow, tileColumn, zoom, way.coordinates[1:])...
+	// )
 }
 func (encoder *encoder) EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature) []uint32 {
 	// A way consist of a initial moveTo command followed by one or more lineTo command and a closePath command.
