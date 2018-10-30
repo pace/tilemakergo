@@ -63,19 +63,20 @@ func main() {
     log.Printf("Start parsing of %s -> %s [%s]", *inputFilePtr, *outputFilePtr, *processorFilePtr)
 
 	var wg sync.WaitGroup
-	var qlen = 10000
+	var qlen = 1000
 	// var threads = 8
 
 	storeChan := make(chan feature, qlen)
 	metaChan := make(chan bounds)
 	exportChan := make(chan tileFeatures, qlen)
-	writeChan := make(chan tileData, qlen)
 
 	reader(*inputFilePtr, storeChan, metaChan)
 
 	// run our storage routine
 	// TODO: make multithread?
 	go func() {
+		log.Printf("Start export")
+
 		for f := range storeChan {
 			writtenIndexes := map[int64]bool{}
 
@@ -100,56 +101,36 @@ func main() {
 			}
 		}
 
-		log.Printf("Store")
-
+		// As we don't know which features are in what tiles, 
+		// We need to wait until all features are mapped to tiles
 		for _, features := range tiles {
 			exportChan <- features
 		}
 
 		close(exportChan)
 
-		log.Printf("Mapper done")
+		log.Printf("All tiles stored")
 	}()
-
-	// Wait until all data is processed (all routines ended)
-	wg.Wait()
-
-	log.Printf("Start export")
-
-	// Start exporter routines
-	var wgExporter sync.WaitGroup
 
 	// TODO: This seems to be not multi-thread safe
 	// TODO: Check why and improve speed
 	wg.Add(1)
-	wgExporter.Add(1)
 	go func() {
 		defer wg.Done()
-		defer wgExporter.Done()
-		exporter(0, exportChan, writeChan)
+		exporter(outputFilePtr, exportChan)
 	}()
-
-	// Starter writer routine
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		for m := range metaChan {
-			meta := metadata{name: "pace", description: "pacetiles", bounds: []float64{
-				float64(m.minLongitude),
-				float64(m.minLatitude),
-				float64(m.maxLongitude),
-				float64(m.maxLatitude)}}
-
-			writer(0, writeChan, *outputFilePtr, &meta)
-		}
-	}()
-
-	// Wait until expoerter finished it's jobs and close write channel
-	wgExporter.Wait()
-
-	close(writeChan)
 
 	// Wait until all data is processed (all routines ended)
 	wg.Wait()
+
+	// Extract data bounds
+	metaBounds := <-metaChan
+
+	meta := metadata{name: "pace", description: "pacetiles", bounds: []float64{
+		float64(metaBounds.minLongitude),
+		float64(metaBounds.minLatitude),
+		float64(metaBounds.maxLongitude),
+		float64(metaBounds.maxLatitude)}}
+
+	storeMetadata(&meta, *outputFilePtr)
 }

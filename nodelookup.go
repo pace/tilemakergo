@@ -27,6 +27,16 @@ func setLatLong(nodes []osmnode, id int64, point coordinate) bool {
 // 	}
 // }
 
+func searchIndex2(nodes []osmnode, id int64) int {
+	for i := range nodes {
+		if nodes[i].id == id {
+			return i
+		}
+	}
+
+	return -1
+}
+
 func searchIndex(nodes []osmnode, id int64) int {
 	index := sort.Search(len(nodes), func(i int) bool { return id <= nodes[i].id })
 	if index == len(nodes) {

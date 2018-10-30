@@ -24,12 +24,19 @@ type tileData struct {
 	data      []byte
 }
 
-func writer(id int, jobs <-chan tileData, destFile string, meta *metadata) {
-	log.Printf("Exporting to mbtiles database `%s`. Note: If database already exists, tiles will be replaced / added", destFile)
+func storeMetadata(meta *metadata, destFile string) {
+	log.Println("Store meta data")
+
 	db := CreateOrOpenDatabase(destFile)
 	defer db.Close()
 
 	UpdateMetadata(db, meta)
+}
+
+func storeTiles(tiles []tileData, destFile string) {
+	db := CreateOrOpenDatabase(destFile)
+	defer db.Close()
+
 	transaction, err := db.Begin()
 	if err != nil {
 		log.Fatal("Can't start transaction")
@@ -42,7 +49,7 @@ func writer(id int, jobs <-chan tileData, destFile string, meta *metadata) {
 		return
 	}
 
-	for tile := range jobs {
+	for _, tile := range tiles {
 		flippedRow := int(math.Pow(2, float64(tile.zoomLevel))) - tile.row - 1
 
 		_, err = insertStatement.Exec(tile.zoomLevel, tile.column, flippedRow, tile.data)

@@ -15,8 +15,7 @@ const (
 )
 const extent uint32 = 4096 // TODO: This needs to be read from config
 
-var currentX = float64(0.0)
-var currentY = float64(0.0)
+
 
 type layerMeta struct {
 	keyIndex   uint32
@@ -25,16 +24,34 @@ type layerMeta struct {
 	values     map[interface{}]uint32
 }
 
-var count = 0
-
-// Debug entry point
-func exporter(id int, jobs <-chan tileFeatures, results chan<- tileData) {
-	for features := range jobs {
-		results <- EncodeFeatures(&features)
-	}
+type encoder struct {
+	currentX 	float64
+	currentY	float64
 }
 
-func EncodeFeatures(tile *tileFeatures) tileData {
+// Debug entry point
+func exporter(outputFilePtr *string, jobs <-chan tileFeatures) {
+	var buffer = make([]tileData, 1000)
+	var bufferIndex = 0
+
+	for features := range jobs {
+		encoder := &encoder{0, 0}
+		buffer[bufferIndex] = encoder.EncodeFeatures(&features)
+		bufferIndex++
+
+		if bufferIndex >= len(buffer) {
+			storeTiles(buffer, *outputFilePtr)
+			buffer = make([]tileData, 1000)
+			bufferIndex = 0
+		}
+	}
+
+	if bufferIndex > 0 {
+		storeTiles(buffer, *outputFilePtr)
+	}	
+}
+
+func (encoder *encoder) EncodeFeatures(tile *tileFeatures) tileData {
 	// Create a protobuffer tile file
 	var pbTile = Tile{}
 	var layerMetas = make(map[string]layerMeta)
@@ -62,24 +79,28 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 
 		// Encode all commands needed to draw this feature
 		// Reset the pointer to allow correct relative drawing
-		currentX = 0.0
-		currentY = 0.0
+		(*encoder).currentX = 0.0
+		(*encoder).currentY = 0.0
 
-		// TODO: Split up feature so that we only ever draw 1 "pixel" out of our bounds
-		// TODO: We must make sure that a feature is not just cut of but split, in case it enters
-		// TODO: the current tile again
+		// Split up feature so that we only ever draw 1 "pixel" out of our bounds
+		// We must make sure that a feature is not just cut of but split, in case it enters
+		// the current tile again
 
 		var commands []uint32
 		switch feature.typ {
 		case featureTypePoint:
-			commands = EncodeNode(row, column, tile.zoomLevel, feature)
+			commands = (*encoder).EncodeNode(row, column, tile.zoomLevel, feature)
 		case featureTypeLine:
-			commands = EncodeWay(row, column, tile.zoomLevel, feature)
+			commands = (*encoder).EncodeWay(row, column, tile.zoomLevel, feature)
 		case featureTypePolygon:
-			commands = EncodePolygon(row, column, tile.zoomLevel, feature)
+			commands = (*encoder).EncodePolygon(row, column, tile.zoomLevel, feature)
 		}
 
 		if len(commands) > 0 {
+			if column == 34504 && row == 23016 {
+				// log.Printf("Encoded feature %d: [%v]\n", feature.typ, commands)
+			}
+
 			pbFeature.Geometry = commands
 
 			// Encode all keys (properties) for this feature.
@@ -161,24 +182,24 @@ func EncodeFeatures(tile *tileFeatures) tileData {
 
 	return tileData{zoomLevel: tile.zoomLevel, row: tile.row, column: tile.column, data: out}
 }
-func EncodeNode(tileRow uint32, tileColumn uint32, zoom int, node feature) []uint32 {
+func (encoder *encoder) EncodeNode(tileRow uint32, tileColumn uint32, zoom int, node feature) []uint32 {
 	// A node consists of a single moveTo command. This can be repeated for multipoints.
-	return Command(commandMoveTo, tileRow, tileColumn, zoom, node.coordinates[0:1])
+	return (*encoder).Command(commandMoveTo, tileRow, tileColumn, zoom, node.coordinates[0:1])
 }
-func EncodeWay(tileRow uint32, tileColumn uint32, zoom int, way feature) []uint32 {
+func (encoder *encoder) EncodeWay(tileRow uint32, tileColumn uint32, zoom int, way feature) []uint32 {
 	// A way consists of a initial moveTo command followed by one or more lineTo command.
 	// For a way, skip parts which are outside the tile.
-	return CutCommand(tileRow, tileColumn, zoom, way.coordinates[0:len(way.coordinates)])
+	return (*encoder).CutCommand(tileRow, tileColumn, zoom, way.coordinates[0:len(way.coordinates)])
 }
-func EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature) []uint32 {
+func (encoder *encoder) EncodePolygon(tileRow uint32, tileColumn uint32, zoom int, polygon feature) []uint32 {
 	// A way consist of a initial moveTo command followed by one or more lineTo command and a closePath command.
 	return append(
-		EncodeWay(tileRow, tileColumn, zoom, polygon),
-		Command(commandClosePath, tileRow, tileColumn, zoom, []coordinate{})...)
+		(*encoder).EncodeWay(tileRow, tileColumn, zoom, polygon),
+		(*encoder).Command(commandClosePath, tileRow, tileColumn, zoom, []coordinate{})...)
 }
 
 // Remove coordinates which are outside of the tile, cut in multiple lists and process as Command
-func CutCommand(tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
+func (encoder *encoder) CutCommand(tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
 	if len(coordinates) == 0 {
 		return make([]uint32, 0, 0)
 	}
@@ -216,9 +237,9 @@ func CutCommand(tileRow uint32, tileColumn uint32, zoom int, coordinates []coord
 				// Add last coordinate to draw outside of bounds.
 				currentCoordinates = append(currentCoordinates, coord)
 
-				combinedCommands = append(combinedCommands, Command(commandMoveTo, tileRow, tileColumn, zoom, currentCoordinates[0:1])...)
+				combinedCommands = append(combinedCommands, (*encoder).Command(commandMoveTo, tileRow, tileColumn, zoom, currentCoordinates[0:1])...)
 				if len(currentCoordinates) > 1 {
-					combinedCommands = append(combinedCommands, Command(commandLineTo, tileRow, tileColumn, zoom, currentCoordinates[1:len(currentCoordinates)])...)
+					combinedCommands = append(combinedCommands, (*encoder).Command(commandLineTo, tileRow, tileColumn, zoom, currentCoordinates[1:len(currentCoordinates)])...)
 				}
 			}
 
@@ -233,16 +254,16 @@ func CutCommand(tileRow uint32, tileColumn uint32, zoom int, coordinates []coord
 
 	if insideTile {
 		// Encode last slice.
-		combinedCommands = append(combinedCommands, Command(commandMoveTo, tileRow, tileColumn, zoom, currentCoordinates[0:1])...)
+		combinedCommands = append(combinedCommands, (*encoder).Command(commandMoveTo, tileRow, tileColumn, zoom, currentCoordinates[0:1])...)
 		if len(currentCoordinates) > 1 {
-			combinedCommands = append(combinedCommands, Command(commandLineTo, tileRow, tileColumn, zoom, currentCoordinates[1:len(currentCoordinates)])...)
+			combinedCommands = append(combinedCommands, (*encoder).Command(commandLineTo, tileRow, tileColumn, zoom, currentCoordinates[1:len(currentCoordinates)])...)
 		}
 	}
 
 	return combinedCommands
 }
 
-func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
+func (encoder *encoder) Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates []coordinate) []uint32 {
 	command := make([]uint32, len(coordinates)*2+1)
 	command[0] = uint32(uint32(id&0x7)) | uint32((len(coordinates) << 3))
 
@@ -252,16 +273,18 @@ func Command(id uint8, tileRow uint32, tileColumn uint32, zoom int, coordinates 
 		x := (ColumnFromLongitudeF(float64(coordinate.longitude), zoom) - float64(tileColumn)) * float64(extent)
 		y := (RowFromLatitudeF(float64(coordinate.latitude), zoom) - float64(tileRow)) * float64(extent)
 
-		// fmt.Printf("encoding %f %f\n", coordinate.latitude, coordinate.longitude)
-
-		dX := -currentX + x
-		dY := -currentY + y
+		dX := -(*encoder).currentX + x
+		dY := -(*encoder).currentY + y
 
 		command[(index*2)+1] = uint32((int64(dX) << 1) ^ (int64(dX) >> 31)) // Longitude
 		command[(index*2)+2] = uint32((int64(dY) << 1) ^ (int64(dY) >> 31)) // Latitude
 
-		currentX = x
-		currentY = y
+		if (command[(index*2)+1] > 10000) {
+			// log.Printf("encoding %f %f\n", coordinate.latitude, coordinate.longitude)
+		}
+
+		(*encoder).currentX = x
+		(*encoder).currentY = y
 	}
 
 	return command
