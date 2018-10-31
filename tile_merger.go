@@ -25,48 +25,99 @@ func mergeTiles(tileA []byte, tileB []byte) []byte {
 
 	// Add all features from tile B to tile A if they are not yet there:
 
-	for i, layerA := range pbTileA.Layers {
+	for _, layerA := range pbTileA.Layers {
 
-		// Merge Layer string tables:
-		tableA := layerA.Values
-		tableB := pbTileB.Layers[i].Values
+		// Find smae layer in tile B.
+		k := 0
+		for j := range pbTileB.Layers {
+			if *pbTileB.Layers[j].Name == *layerA.Name {
+				k = j
+				break
+			}
+		}
 
-		tableMap := make(map[int]int)
-		tagsToAdd := make([]*Tile_Value, 0, 0)
+		// Merge Layer string tables.
 
-		for k, v := range tableB {
+		// Merge key tables:
+		keysA := layerA.Keys
+		keysB := pbTileB.Layers[k].Keys
+
+		keyMap := make(map[int]int)
+		keysToAdd := make([]string, 0, 0)
+
+		for k, b := range keysB {
 			found := -1
-			for i, a := range tableA {
-				if *a.StringValue == *v.StringValue {
+			for i, a := range keysA {
+				if b == a {
 					found = i
 					break
 				}
 			}
 
 			if found > -1 {
-				tableMap[k] = i
+				keyMap[k] = found
 			} else {
-				tagsToAdd = append(tagsToAdd, v)
-				tableMap[k] = len(tagsToAdd) + len(tableA) - 1
+				keysToAdd = append(keysToAdd, b)
+				keyMap[k] = len(keysToAdd) + len(keysA) - 1
 			}
 		}
 
-		layerA.Values = append(tableA, tagsToAdd...)
+		layerA.Keys = append(keysA, keysToAdd...)
+
+		// Merge value tables:
+		valuesA := layerA.Values
+		valuesB := pbTileB.Layers[k].Values
+
+		valueMap := make(map[int]int)
+		valuesToAdd := make([]*Tile_Value, 0, 0)
+
+		for k, b := range valuesB {
+			found := -1
+
+			for i, a := range valuesA {
+				if a.StringValue != nil && b.StringValue != nil {
+					if *a.StringValue == *b.StringValue {
+						found = i
+						break
+					}
+				} else if a.IntValue != nil && b.IntValue != nil {
+					if *a.IntValue == *b.IntValue {
+						found = i
+						break
+					}
+				}
+			}
+
+			if found > -1 {
+				valueMap[k] = found
+			} else {
+				valuesToAdd = append(valuesToAdd, b)
+				valueMap[k] = len(valuesToAdd) + len(valuesA) - 1
+			}
+		}
+
+		layerA.Values = append(valuesA, valuesToAdd...)
 
 		// Collect feature IDs:
 		idMap := make(map[uint64]bool)
-		featuresToAdd := make([]*Tile_Feature, 0, len(pbTileB.Layers[i].Features))
+		featuresToAdd := make([]*Tile_Feature, 0, len(pbTileB.Layers[k].Features))
 
 		for _, featureA := range layerA.Features {
 			idMap[*featureA.Id] = true
 		}
 
-		for _, featureB := range pbTileB.Layers[i].Features {
+		for _, featureB := range pbTileB.Layers[k].Features {
 			_, hasKey := idMap[*featureB.Id]
 			if !hasKey {
-				// Remap tag IDs.
+				// Remap tag IDs. TODO.
 				for i := range featureB.Tags {
-					featureB.Tags[i] = uint32(tableMap[int(featureB.Tags[i])])
+					if (i % 2) == 0 {
+						// Use keys.
+						featureB.Tags[i] = uint32(keyMap[int(featureB.Tags[i])])
+					} else {
+						// Use Values.
+						featureB.Tags[i] = uint32(valueMap[int(featureB.Tags[i])])
+					}
 				}
 				// Add feature to Layer.
 				featuresToAdd = append(featuresToAdd, featureB)

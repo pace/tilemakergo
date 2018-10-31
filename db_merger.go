@@ -166,6 +166,8 @@ func mergeDatabases(sourceFileA string, sourceFileB string, outFile string) {
 	meta := metadata{name: "pace", description: "pacetiles", bounds: mergedBounds}
 
 	UpdateMetadata(dbOut, &meta)
+
+	log.Println("Done.")
 }
 
 func getBounds(bounds *sql.Rows) []float64 {
