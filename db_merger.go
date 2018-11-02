@@ -10,142 +10,96 @@ import (
 func mergeDatabases(sourceFileA string, sourceFileB string, outFile string) {
 	log.Printf("Merging %s and %s to %s...\n", sourceFileA, sourceFileB, outFile)
 	dbA := OpenDatabase(sourceFileA)
-	dbB := OpenDatabase(sourceFileB)
 	dbOut := CreateOrOpenDatabase(outFile)
 
-	defer dbA.Close()
-	defer dbB.Close()
-	defer dbOut.Close()
+	dbOut.Close()
 
-	rowsA, err := dbA.Query("SELECT zoom_level, tile_column, tile_row FROM tiles")
-	defer rowsA.Close()
+	defer dbA.Close()
+
+	// attach all databases to dbA:
+	_, err := dbA.Exec("ATTACH './" + sourceFileB + "' AS dbB")
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to attach database: %s", err)
 	}
 
-	// Copy and merge all tiles from database A
+	_, err = dbA.Exec("ATTACH './" + outFile + "' AS dbOut")
+
+	if err != nil {
+		log.Fatalf("Failed to attach database: %s", err)
+	}
+
+	// Copy all tiles which are exclusively in either database.
+
+	_, err = dbA.Exec("INSERT OR REPLACE INTO dbOut.tiles SELECT * FROM tiles EXCEPT SELECT * FROM dbB.tiles")
+
+	if err != nil {
+		log.Fatalf("Failed to copy tiles from A to OUT: %s", err)
+	}
+
+	_, err = dbA.Exec("INSERT OR REPLACE INTO dbOut.tiles SELECT * FROM dbB.tiles EXCEPT SELECT * FROM tiles")
+
+	if err != nil {
+		log.Fatalf("Failed to copy tiles from B to OUT: %s", err)
+	}
+
+	// Detach dbOut:
+	_, err = dbA.Exec("DETACH dbOut")
+
+	if err != nil {
+		log.Fatalf("Failed to detach dbOut: %s", err)
+	}
+
+	// Merge tiles which are in both databases:
+
+	rowsBoth, err := dbA.Query("SELECT t1.zoom_level, t1.tile_column, t1.tile_row, t1.tile_data, t2.tile_data FROM tiles AS t1 INNER JOIN dbB.tiles AS t2 ON t1.tile_column=t2.tile_column AND t1.tile_row=t2.tile_row AND t1.zoom_level = t2.zoom_level")
+
+	if err != nil {
+		log.Fatalf("Failed to select border tiles: %s", err)
+	}
+
+	tCount := 0
+
+	dbOut = OpenDatabase(outFile)
+	defer dbOut.Close()
 
 	transaction, err := dbOut.Begin()
 	if err != nil {
-		log.Fatal("Can't start transaction")
+		log.Fatalf("Cannot start transaction: %s\n", err)
 	}
 
-	for rowsA.Next() {
+	for rowsBoth.Next() {
 		var zoomLevel int
 		var tileRow int64
 		var tileCol int64
+		var tileDataA []byte
+		var tileDataB []byte
 
-		rowsA.Scan(&zoomLevel, &tileCol, &tileRow)
+		rowsBoth.Scan(&zoomLevel, &tileCol, &tileRow, &tileDataA, &tileDataB)
 
-		// check if the tile exists in database B, too:
+		fullTileData := mergeTiles(tileDataA, tileDataB)
 
-		rowB, err := dbB.Query("SELECT tile_data FROM tiles WHERE zoom_level = $1 AND tile_row = $2 AND tile_column = $3", zoomLevel, tileRow, tileCol)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		var fullTileData []byte
-
-		rowTileA, err := dbA.Query("SELECT tile_data FROM tiles WHERE zoom_level = $1 AND tile_row = $2 AND tile_column = $3", zoomLevel, tileRow, tileCol)
+		insertStatement, err := transaction.Prepare("INSERT OR REPLACE INTO tiles(zoom_level, tile_column, tile_row, tile_data) VALUES(?, ?, ?, ?)")
 
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("Cannot prepare insert query: %s\n", err)
 		}
 
-		if rowTileA.Next() {
-			rowTileA.Scan(&fullTileData)
-		} else {
-			log.Fatalf("Did not find tile %d %d in db A\n", tileRow, tileCol)
+		_, err = insertStatement.Exec(zoomLevel, tileCol, tileRow, fullTileData)
+
+		if err != nil {
+			log.Fatalf("Cannot insert tile %s\n", err)
 		}
 
-		if rowB.Next() {
-			var tileData []byte
-
-			rowB.Scan(&tileData)
-
-			// Merge tiles.
-			fullTileData = mergeTiles(fullTileData, tileData)
-		}
-
-		// Write tile to output database:
-		insertStatement, err2 := transaction.Prepare("INSERT OR REPLACE INTO tiles(zoom_level, tile_column, tile_row, tile_data) values(?, ?, ?, ?)")
-		if err2 != nil {
-			log.Fatal("Can't start transaction")
-		}
-
-		_, err2 = insertStatement.Exec(zoomLevel, tileCol, tileRow, fullTileData)
-
-		rowTileA.Close()
-		rowB.Close()
 		insertStatement.Close()
+
+		tCount++
 	}
+
+	log.Printf("Merged %d border tiles\n", tCount)
 
 	transaction.Commit()
-
-	// Start second large transaction.
-	transaction, err = dbOut.Begin()
-
-	// Copy all missing tiles from database B  (only tiles which are not in A)
-
-	rowsB, err2 := dbB.Query("SELECT zoom_level, tile_column, tile_row FROM tiles")
-	defer rowsB.Close()
-
-	if err2 != nil {
-		log.Fatal(err2)
-	}
-
-	for rowsB.Next() {
-		var zoomLevel int
-		var tileRow int64
-		var tileCol int64
-
-		rowsB.Scan(&zoomLevel, &tileCol, &tileRow)
-		// Check if tile exists in A (if so, it was already merged)
-
-		rowA, err := dbA.Query("SELECT tile_row FROM tiles WHERE zoom_level = $1 AND tile_row = $2 AND tile_column = $3", zoomLevel, tileRow, tileCol)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if !rowA.Next() {
-			// Tile does not exist in db A.
-			var tileData []byte
-
-			rowB, err := dbB.Query("SELECT tile_data FROM tiles WHERE zoom_level = $1 AND tile_row = $2 AND tile_column = $3", zoomLevel, tileRow, tileCol)
-
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if !rowB.Next() {
-				log.Fatalf("Could not find tile %d %d\n", tileCol, tileRow)
-			}
-
-			rowB.Scan(&tileData)
-
-			insertStatement, err2 := transaction.Prepare("INSERT OR REPLACE INTO tiles(zoom_level, tile_column, tile_row, tile_data) values(?, ?, ?, ?)")
-
-			if err2 != nil {
-				log.Fatal("Can't start transaction")
-			}
-
-			_, err2 = insertStatement.Exec(zoomLevel, tileCol, tileRow, tileData)
-
-			if err2 != nil {
-				log.Fatal("Can't write to output db.")
-			}
-
-			rowB.Close()
-			insertStatement.Close()
-		}
-
-		rowA.Close()
-	}
-
-	transaction.Commit()
+	rowsBoth.Close()
 
 	// Read bounds and write metadata:
 
@@ -154,6 +108,9 @@ func mergeDatabases(sourceFileA string, sourceFileB string, outFile string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	dbB := OpenDatabase(sourceFileB)
+	defer dbB.Close()
 
 	boundsB, err := dbB.Query("SELECT value FROM metadata WHERE name = ?", "bounds")
 
