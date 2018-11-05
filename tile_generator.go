@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+    "sync"
 
 	proto "github.com/golang/protobuf/proto"
 )
@@ -29,6 +30,8 @@ type encoder struct {
 	currentY	int64
 }
 
+var dbMutex = &sync.Mutex{}
+
 // Debug entry point
 func exporter(outputFilePtr *string, jobs <-chan tileFeatures) {
 	var buffer = make([]tileData, 5000)
@@ -40,9 +43,11 @@ func exporter(outputFilePtr *string, jobs <-chan tileFeatures) {
 		bufferIndex++
 
 		if bufferIndex >= len(buffer) {
+			dbMutex.Lock()
 			storeTiles(buffer, *outputFilePtr)
 			buffer = make([]tileData, 1000)
 			bufferIndex = 0
+			dbMutex.Unlock()
 		}
 	}
 
